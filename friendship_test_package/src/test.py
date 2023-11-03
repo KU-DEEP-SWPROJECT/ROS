@@ -11,13 +11,13 @@ DIST_DETECT = [(30 + 10 * math.cos(((i * math.pi / 180.0 - math.pi) ** 3) / (mat
 
 class Direction(enum.Enum):
     FRONT = 1
-    FRONTRIGHT = 2
-    RIGHT = 3
-    BACKRIGHT = 4
+    FRONTLEFT = 2
+    LEFT = 3
+    BACKLEFT = 4
     BACK = 5
-    BACKLEFT = 6
-    LEFT = 7
-    FRONTLEFT = 8
+    BACKRIGHT = 6
+    RIGHT = 7
+    FRONTRIGHT = 8
 
 
 def is_trigger(range_values):
@@ -42,19 +42,19 @@ def classify(angle):
     elif angle < 10 or angle >= 350:
         return Direction.FRONT
     elif angle < 60:
-        return Direction.FRONTRIGHT
+        return Direction.FRONTLEFT
     elif angle < 120:
-        return Direction.RIGHT
+        return Direction.LEFT
     elif angle < 170:
-        return Direction.BACKRIGHT
+        return Direction.BACKLEFT
     elif angle < 190:
         return Direction.BACK
     elif angle < 240:
-        return Direction.BACKLEFT
+        return Direction.BACKRIGHT
     elif angle < 300:
-        return Direction.LEFT
+        return Direction.RIGHT
     else:
-        return Direction.FRONTLEFT
+        return Direction.FRONTRIGHT
     
 
 def callback(data):
