@@ -23,7 +23,7 @@ def callback(data):
     # type: (LaserScan) -> None
     trig = is_trigger(data.ranges)
     if trig:
-        rospy.loginfo("Detected: %s", str(min(trig, key=lambda: x[1])))
+        rospy.loginfo("Detected: %s", str(min(trig, key=lambda x: x[1])))
 
 def main():
     rospy.init_node("test_subscriber")
