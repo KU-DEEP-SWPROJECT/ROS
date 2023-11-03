@@ -1,31 +1,29 @@
 #!/usr/bin/env python
 
 import rospy
+import math
 from sensor_msgs.msg import LaserScan
 
 
-DIST_LIMIT = 30
+DIST_DETECT = [(30 + 10 * math.cos(((i * math.pi / 180.0 - math.pi) ** 3) / (math.pi * math.pi) + math.pi)) ** 1.2 / 150.0 for i in range(360)]
 
 
 def is_trigger(range_values):
-    # type: (list[float]) -> tuple[int, float] | bool
+    # type: (list[float]) -> tuple[int, float] | list[tuple[int, float]]
     """Determin it is under a specific circumstance by given distance values.
     
     Since this code is for the test, all infos about this function may be changed at any time.
-    - Current the condition is: check if there's any lower distance value(m) than DIST_LIMIT(cm), excluding zero-values.
-    - Current return type is: `tuple[int, float] | bool`
+    - Current the condition is: compare dist values with pre-defined values angle to angle.
+    - Current return type is: `tuple[int, float] | list[tuple[int, float]]`
     """
-    filtered = filter(lambda x: x[1] > 0.001, enumerate(range_values))
-    minimum = min(filtered, key=lambda x: x[1])
-    if minimum[1] * 100 < DIST_LIMIT:
-        return minimum
-    return False
+    return list(filter(lambda x: 0.001 < x[1] < DIST_DETECT[x[0]], enumerate(range_values)))
+    
 
 def callback(data):
     # type: (LaserScan) -> None
     trig = is_trigger(data.ranges)
     if trig:
-        rospy.loginfo("Detected object too close: %s", str(trig))
+        rospy.loginfo("Detected: %s", str(min(trig, key=lambda: x[1])))
 
 def main():
     rospy.init_node("test_subscriber")
