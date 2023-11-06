@@ -3,23 +3,21 @@
 import rospy
 import math
 import enum
-import operator
-from functools import reduce
 from sensor_msgs.msg import LaserScan
 
 
 DIST_DETECT = [(30 + 10 * math.cos(((i * math.pi / 180.0 - math.pi) ** 3) / (math.pi * math.pi) + math.pi)) ** 1.2 / 150.0 for i in range(360)]
 
 
-class Direction(enum.Flag):
+class Direction(enum.Enum):
     FRONT = 1
     FRONTLEFT = 2
-    LEFT = 4
-    BACKLEFT = 8
-    BACK = 16
-    BACKRIGHT = 32
-    RIGHT = 64
-    FRONTRIGHT = 128
+    LEFT = 3
+    BACKLEFT = 4
+    BACK = 5
+    BACKRIGHT = 6
+    RIGHT = 7
+    FRONTRIGHT = 8
     
     @staticmethod
     def get(angle):
@@ -54,16 +52,20 @@ def is_trigger(range_values):
     return list(filter(lambda x: 0.001 < x[1] < DIST_DETECT[x[0]], enumerate(range_values)))
 
 
-def act(angle):
-    # type: (int) -> None
-    direction = Direction.get(angle)
+def act(directions):
+    # type: (set[Direction]) -> int
+    direction_bit = 0
+    for i in range(1, 9):
+        if Direction(i) in directions:
+            direction_bit |= 1 << i
+    return direction_bit
 
 
 def callback(data):
     # type: (LaserScan) -> None
     trig = is_trigger(data.ranges)
     if trig:
-        rospy.loginfo("Detected direction(s) = %s", str(reduce(operator.or_, map(lambda x: Direction.get(x[0]).name, trig))))
+        rospy.loginfo("Detected direction(s) = %b", act(set(map(Direction.get, trig))))
 
 
 def main():
