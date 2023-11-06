@@ -57,7 +57,6 @@ def is_trigger(range_values):
 def act(angle):
     # type: (int) -> None
     direction = Direction.get(angle)
-    ...
 
 
 def callback(data):
