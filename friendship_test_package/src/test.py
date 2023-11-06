@@ -65,7 +65,7 @@ def callback(data):
     # type: (LaserScan) -> None
     trig = is_trigger(data.ranges)
     if trig:
-        rospy.loginfo("Detected direction(s) = %b", act(set(map(Direction.get, trig))))
+        rospy.loginfo("Detected direction(s) = %s", bin(act(set(map(Direction.get, trig)))))
 
 
 def main():
