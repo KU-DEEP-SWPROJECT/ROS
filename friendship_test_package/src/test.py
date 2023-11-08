@@ -185,14 +185,10 @@ def main():
     vel = Twist()
     vel.linear.x = VELOCITY
     rate = rospy.Rate(10)
-    try:
-        while not rospy.is_shutdown():  # 10 secs
-            pub.publish(vel)
-            rate.sleep()
-    except Exception as e:
-        print(e)
-    finally:
-        pub.publish(Twist())
+    rospy.on_shutdown(lambda: pub.publish(Twist()))
+    while not rospy.is_shutdown():  # 10 secs
+        pub.publish(vel)
+        rate.sleep()
 
 if __name__ == '__main__':
     main()
