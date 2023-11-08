@@ -192,7 +192,7 @@ def main():
             pub.publish(vel)
             rate.sleep()
     except:
-        pass
+        raise
     finally:
         pub.publish(Twist())
 
