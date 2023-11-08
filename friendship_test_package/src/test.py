@@ -134,6 +134,8 @@ class IncidentDetector:
         """Callback for scan topic."""
         if not self._DETECTING:
             self._DETECTING = True
+            self.prev_scan_time = laser_data.header.stamp.to_sec()
+            self.prev_ranges = laser_data.ranges
             return
         if self._DEBUG_STOP:
             return
