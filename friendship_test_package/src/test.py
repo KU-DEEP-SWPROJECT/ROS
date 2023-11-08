@@ -155,7 +155,7 @@ class IncidentDetector:
         actual_detect_angles = sorted(reduce(lambda x, y: x & y, detect_pools))
         
         if actual_detect_angles:
-            median = len(actual_detect_angles) / 2
+            median = actual_detect_angles[len(actual_detect_angles) / 2]
             rospy.loginfo("Incident detected! : %s (real=%.3f, expected=%.3f)", median, *detected[median])
         
         self.prev_scan_time = ntime
