@@ -186,7 +186,7 @@ def main():
     vel.linear.x = VELOCITY
     rate = rospy.Rate(10)
     try:
-        while rospy.is_shutdown():  # 10 secs
+        while not rospy.is_shutdown():  # 10 secs
             pub.publish(vel)
             rate.sleep()
     except Exception as e:
