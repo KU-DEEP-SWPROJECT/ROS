@@ -111,20 +111,11 @@ class IncidentDetector:
             temp[int(new_data[0])].append(new_data)
         
         # 원하는 방향에서 위에서 구한 값들 중 가장 가까운 방향 양쪽으로 2개 구해서 선형추정
-        # 각도 탐색에 boundary 설정
-        BOUNDARY = 3
         for angle in range(360):
-            max_data = (-999, 0)
-            min_data = (999, 0)
-            for i in range(angle, angle + BOUNDARY):
-                if temp[i%360]:
-                    max_data = min(temp[i%360])
-                    break
-            for i in range(angle, angle - BOUNDARY, -1):
-                if temp[i%360]:
-                    min_data = max(temp[i%360])
-                    break
-            if max_data[0] == -999 or min_data[0] == 999:
+            try:
+                max_data = min(temp[angle])
+                min_data = max(temp[angle-1])
+            except ValueError:
                 continue
             rval[angle] = (angle - min_data[0]) * (max_data[1] - min_data[1]) / (min_data[1] - min_data[0]) + min_data[1]
         return rval
