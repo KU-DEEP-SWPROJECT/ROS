@@ -79,7 +79,7 @@ def constrain(value, minimum, maximum):
 
 
 class IncidentDetector:
-    DETECT_POOL = 3
+    DETECT_POOL = 4
     
     def __init__(self):
         self._time = rospy.Time()
@@ -110,13 +110,13 @@ class IncidentDetector:
         temp = [[] for _ in range(360)]
         for angle, dist in enumerate(ranges):
             new_data = self.expect_next_data(angle, dist, step)
-            temp[int(new_data[0])].append(new_data)
+            temp[int(round(new_data[0]))].append(new_data)
         
         # 원하는 방향에서 위에서 구한 값들 중 가장 가까운 방향 양쪽으로 2개 구해서 선형추정
         for angle in range(360):
             try:
                 max_data = min(temp[angle])
-                min_data = max(temp[angle-1])
+                min_data = max(temp[angle])
             except ValueError:
                 continue
             rval[angle] = (angle - min_data[0]) * (max_data[1] - min_data[1]) / (min_data[1] - min_data[0]) + min_data[1]
@@ -147,7 +147,7 @@ class IncidentDetector:
                 continue
             if self.prev_ranges[angle] < actual_ranges[angle]:
                 continue
-            if actual_ranges[angle] < expected_ranges[angle] - constrain(expected_ranges[angle] / 1.5, 0.15, 0.5):
+            if actual_ranges[angle] < expected_ranges[angle] - constrain(expected_ranges[angle] / 1.75, 0.15, 1):
                 detected[angle] = (actual_ranges[angle], expected_ranges[angle])
                 for i in range(self.DETECT_POOL):
                     detect_pools[i].add((angle + TEMP + 1))
