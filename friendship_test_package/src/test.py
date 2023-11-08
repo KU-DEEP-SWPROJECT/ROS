@@ -180,7 +180,7 @@ def main():
     rospy.init_node("test_subscriber")
     incident_detector = IncidentDetector()
     
-    pub = rospy.Publisher("cmd_vel_rc100", Twist)
+    pub = rospy.Publisher("cmd_vel", Twist)
     vel = Twist()
     vel.linear.x = VELOCITY
     pub.publish(vel)
