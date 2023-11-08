@@ -8,61 +8,61 @@ from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 
 
-DIST_DETECT = [(30 + 10 * math.cos(((i * math.pi / 180.0 - math.pi) ** 3) / (math.pi * math.pi) + math.pi)) ** 1.2 / 150.0 for i in range(360)]
+# DIST_DETECT = [(30 + 10 * math.cos(((i * math.pi / 180.0 - math.pi) ** 3) / (math.pi * math.pi) + math.pi)) ** 1.2 / 150.0 for i in range(360)]
 
 
-class Direction(enum.Enum):
-    FRONT = 1
-    FRONTLEFT = 2
-    LEFT = 3
-    BACKLEFT = 4
-    BACK = 5
-    BACKRIGHT = 6
-    RIGHT = 7
-    FRONTRIGHT = 8
+# class Direction(enum.Enum):
+#     FRONT = 1
+#     FRONTLEFT = 2
+#     LEFT = 3
+#     BACKLEFT = 4
+#     BACK = 5
+#     BACKRIGHT = 6
+#     RIGHT = 7
+#     FRONTRIGHT = 8
     
-    @staticmethod
-    def get(angle):
-        if angle < 0 or angle >= 360:
-            return None
-        elif angle < 10 or angle >= 350:
-            return Direction.FRONT
-        elif angle < 60:
-            return Direction.FRONTLEFT
-        elif angle < 120:
-            return Direction.LEFT
-        elif angle < 170:
-            return Direction.BACKLEFT
-        elif angle < 190:
-            return Direction.BACK
-        elif angle < 240:
-            return Direction.BACKRIGHT
-        elif angle < 300:
-            return Direction.RIGHT
-        else:
-            return Direction.FRONTRIGHT
+#     @staticmethod
+#     def get(angle):
+#         if angle < 0 or angle >= 360:
+#             return None
+#         elif angle < 10 or angle >= 350:
+#             return Direction.FRONT
+#         elif angle < 60:
+#             return Direction.FRONTLEFT
+#         elif angle < 120:
+#             return Direction.LEFT
+#         elif angle < 170:
+#             return Direction.BACKLEFT
+#         elif angle < 190:
+#             return Direction.BACK
+#         elif angle < 240:
+#             return Direction.BACKRIGHT
+#         elif angle < 300:
+#             return Direction.RIGHT
+#         else:
+#             return Direction.FRONTRIGHT
 
 
-def is_trigger(range_values):
-    # type: (list[float]) -> list[tuple[int, float]]
-    """Determin it is under a specific circumstance by given distance values.
-    주어진 거리 값들을 보고, 특정 상황을 만족하는 지를 판단하는 함수입니다.
+# def is_trigger(range_values):
+#     # type: (list[float]) -> list[tuple[int, float]]
+#     """Determin it is under a specific circumstance by given distance values.
+#     주어진 거리 값들을 보고, 특정 상황을 만족하는 지를 판단하는 함수입니다.
     
-    Since this code is for the test, all infos about this function may be changed at any time.
-    현재 이 코드는 테스트를 위한 함수이기 때문에, 이 함수는 언제든지 그 기능이 바뀔 수 있습니다.
-    - Current the condition is: compare dist values with pre-defined values angle to angle.
-    - Current return type is: `list[tuple[int, float]]`
-    """
-    return list(filter(lambda x: 0.001 < x[1] < DIST_DETECT[x[0]], enumerate(range_values)))
+#     Since this code is for the test, all infos about this function may be changed at any time.
+#     현재 이 코드는 테스트를 위한 함수이기 때문에, 이 함수는 언제든지 그 기능이 바뀔 수 있습니다.
+#     - Current the condition is: compare dist values with pre-defined values angle to angle.
+#     - Current return type is: `list[tuple[int, float]]`
+#     """
+#     return list(filter(lambda x: 0.001 < x[1] < DIST_DETECT[x[0]], enumerate(range_values)))
 
 
-def act(directions):
-    # type: (set[Direction]) -> int
-    direction_bit = 0
-    for i in range(1, 9):
-        if Direction(i) in directions:
-            direction_bit |= 1 << i
-    return direction_bit
+# def act(directions):
+#     # type: (set[Direction]) -> int
+#     direction_bit = 0
+#     for i in range(1, 9):
+#         if Direction(i) in directions:
+#             direction_bit |= 1 << i
+#     return direction_bit
 
 
 VELOCITY = 1.0
@@ -81,6 +81,7 @@ class IncidentDetector:
     def __init__(self):
         self._time = rospy.Time()
         self._DETECTING = False
+        self._DEBUG_STOP = False
         self.prev_ranges = [0.0] * 360
         self.prev_scan_time = 0
     
@@ -134,6 +135,8 @@ class IncidentDetector:
         if not self._DETECTING:
             self._DETECTING = True
             return
+        if self._DEBUG_STOP:
+            return
         
         ntime = laser_data.header.stamp.to_sec()
         dtime = ntime - self.prev_scan_time
@@ -152,15 +155,22 @@ class IncidentDetector:
         
         rospy.loginfo("Incident detected! : %s", str(detected))
         
+        if not self._DEBUG_STOP:
+            print('prev_time: %f / ntime: %f / dtime: %f' % (self.prev_scan_time, ntime, dtime))
+            print("step: %f" % step)
+            print(list(map(lambda x: round(x, 5), self.prev_ranges)))
+            print(list(map(lambda x: round(x, 5), expected_range)))
+            print(list(map(lambda x: round(x, 5), actual_range)))
+        
         self.prev_scan_time = ntime
         self.prev_ranges = actual_range
 
 
-def callback(data):
-    # type: (LaserScan) -> None
-    trig = is_trigger(data.ranges)
-    direction_set = set(map(lambda x: Direction.get(x[0]), trig))
-    rospy.loginfo("Detected direction bit = %09s", bin(act(direction_set))[2:])
+# def callback(data):
+#     # type: (LaserScan) -> None
+#     trig = is_trigger(data.ranges)
+#     direction_set = set(map(lambda x: Direction.get(x[0]), trig))
+#     rospy.loginfo("Detected direction bit = %09s", bin(act(direction_set))[2:])
 
 
 def main():
