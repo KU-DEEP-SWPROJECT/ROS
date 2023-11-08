@@ -143,6 +143,8 @@ class IncidentDetector:
         for angle in range(360):
             if actual_range[angle] < 0.001 or expected_range[angle] < 0.001 or self.prev_ranges[angle] < 0.001:
                 continue
+            if actual_range[angle] > 1.5:
+                continue
             if self.prev_ranges[angle] < actual_range[angle]:
                 continue
             if actual_range[angle] < expected_range[angle] - constrain(expected_range[angle] / 1.5, 0.15, 0.5):
