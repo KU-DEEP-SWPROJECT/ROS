@@ -65,7 +65,7 @@ from geometry_msgs.msg import Twist
 #     return direction_bit
 
 
-VELOCITY = 0.1
+VELOCITY = 0.05
 
 
 def constrain(value, minimum, maximum):
@@ -185,13 +185,11 @@ def main():
     vel = Twist()
     vel.linear.x = VELOCITY
     rate = rospy.Rate(10)
-    while pub.get_num_connections() == 0:
-        pass
     try:
-        while True:
+        for _ in range(100):  # 10 secs
             pub.publish(vel)
             rate.sleep()
-    except BaseException as e:
+    except Exception as e:
         print(e)
     finally:
         pub.publish(Twist())
