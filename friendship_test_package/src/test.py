@@ -135,29 +135,34 @@ class IncidentDetector:
         dtime = ntime - self.prev_scan_time
         step = VELOCITY * dtime
         
-        expected_range = self.expect_new_datas(self.prev_ranges, step)
-        actual_range = laser_data.ranges
+        expected_ranges = self.expect_new_datas(self.prev_ranges, step)
+        actual_ranges = laser_data.ranges
         detected = dict()
         detect_pools = [set() for _ in range(self.DETECT_POOL)]
         TEMP = (1 - self.DETECT_POOL) / 2
         for angle in range(360):
-            if actual_range[angle] < 0.001 or expected_range[angle] < 0.001 or self.prev_ranges[angle] < 0.001:
+            if actual_ranges[angle] < 0.001 or expected_ranges[angle] < 0.001 or self.prev_ranges[angle] < 0.001:
                 continue
-            if actual_range[angle] > 1.5:
+            if actual_ranges[angle] > 1.5:
                 continue
-            if self.prev_ranges[angle] < actual_range[angle]:
+            if self.prev_ranges[angle] < actual_ranges[angle]:
                 continue
-            if actual_range[angle] < expected_range[angle] - constrain(expected_range[angle] / 1.5, 0.15, 0.5):
-                detected[angle] = (actual_range[angle], expected_range[angle])
+            if actual_ranges[angle] < expected_ranges[angle] - constrain(expected_ranges[angle] / 1.5, 0.15, 0.5):
+                detected[angle] = (actual_ranges[angle], expected_ranges[angle])
                 for i in range(self.DETECT_POOL):
-                    detect_pools[i].add((angle+TEMP+1))
+                    detect_pools[i].add((angle + TEMP + 1))
         
-        actual_detect_angles = reduce(lambda x, y: x&y, detect_pools)
+        actual_detect_angles = reduce(lambda x, y: x & y, detect_pools)
         
         rospy.loginfo("Incident detected! : %s", {k: detected[k] for k in actual_detect_angles})
+        if actual_detect_angles:
+            print(actual_detect_angles)
+            print(dtime, step)
+            print(self.prev_ranges)
+            print(actual_ranges)
         
         self.prev_scan_time = ntime
-        self.prev_ranges = actual_range
+        self.prev_ranges = actual_ranges
 
 
 # def callback(data):
