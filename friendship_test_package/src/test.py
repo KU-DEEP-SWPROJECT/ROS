@@ -65,7 +65,7 @@ from geometry_msgs.msg import Twist
 #     return direction_bit
 
 
-VELOCITY = 1.0
+VELOCITY = 0.1
 
 
 def constrain(value, minimum, maximum):
@@ -181,18 +181,18 @@ def main():
     incident_detector = IncidentDetector()
     
     rospy.Subscriber("scan", LaserScan, incident_detector.run)
+    pub = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
+    vel = Twist()
+    vel.linear.x = VELOCITY
+    rate = rospy.Rate(10)
+    while pub.get_num_connections() == 0:
+        pass
     try:
-        pub = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
-        vel = Twist()
-        vel.linear.x = VELOCITY
-        rate = rospy.Rate(10)
-        while pub.get_num_connections() == 0:
-            pass
         while True:
             pub.publish(vel)
             rate.sleep()
-    except:
-        raise
+    except BaseException as e:
+        print(e)
     finally:
         pub.publish(Twist())
 
