@@ -79,7 +79,7 @@ def constrain(value, minimum, maximum):
 
 
 class IncidentDetector:
-    DETECT_POOL = 4
+    DETECT_POOL = 5
     
     def __init__(self):
         self._time = rospy.Time()
@@ -154,12 +154,12 @@ class IncidentDetector:
         
         actual_detect_angles = reduce(lambda x, y: x & y, detect_pools)
         
+        rospy.loginfo("Incident detected! : %s", {k: detected[k] for k in actual_detect_angles})
         if actual_detect_angles:
             print(actual_detect_angles)
             print(dtime, step)
             print(self.prev_ranges)
             print(actual_ranges)
-        rospy.loginfo("Incident detected! : %s", {k: detected[k] for k in actual_detect_angles})
         
         self.prev_scan_time = ntime
         self.prev_ranges = actual_ranges
