@@ -81,7 +81,6 @@ class IncidentDetector:
     def __init__(self):
         self._time = rospy.Time()
         self._DETECTING = False
-        self._DEBUG_STOP = False
         self.prev_ranges = [0.0] * 360
         self.prev_scan_time = 0
     
@@ -128,8 +127,6 @@ class IncidentDetector:
             self.prev_scan_time = laser_data.header.stamp.to_sec()
             self.prev_ranges = laser_data.ranges
             return
-        if self._DEBUG_STOP:
-            return
         
         ntime = laser_data.header.stamp.to_sec()
         dtime = ntime - self.prev_scan_time
@@ -137,24 +134,22 @@ class IncidentDetector:
         
         expected_range = self.expect_new_datas(self.prev_ranges, step)
         actual_range = laser_data.ranges
-        detected = []
+        detected = dict()
+        detect_pool1 = set()
+        detect_pool2 = set()
         for angle in range(360):
             if actual_range[angle] < 0.001 or expected_range[angle] < 0.001 or self.prev_ranges[angle] < 0.001:
                 continue
             if self.prev_ranges[angle] < actual_range[angle]:
                 continue
             if actual_range[angle] < expected_range[angle] - constrain(expected_range[angle] / 1.5, 0.15, 0.5):
-                detected.append((angle, actual_range[angle], expected_range[angle]))
+                detected[angle] = (actual_range[angle], expected_range[angle])
+                detect_pool1.add(angle)
+                detect_pool2.add((angle+1)%360)
         
-        rospy.loginfo("Incident detected! : %s", str(detected))
+        actual_detect_angles = detect_pool1 & detect_pool2
         
-        if not self._DEBUG_STOP:
-            print('prev_time: %f / ntime: %f / dtime: %f' % (self.prev_scan_time, ntime, dtime))
-            print("step: %f" % step)
-            print(list(map(lambda x: round(x, 5), self.prev_ranges)))
-            print(list(map(lambda x: round(x, 5), expected_range)))
-            print(list(map(lambda x: round(x, 5), actual_range)))
-            self._DEBUG_STOP = True
+        rospy.loginfo("Incident detected! : %s", {k: detected[k] for k in actual_detect_angles})
         
         self.prev_scan_time = ntime
         self.prev_ranges = actual_range
