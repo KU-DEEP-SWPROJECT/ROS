@@ -163,7 +163,7 @@ class IncidentDetector:
             print(list(map(lambda x: round(x, 5), self.prev_ranges)))
             print(list(map(lambda x: round(x, 5), expected_range)))
             print(list(map(lambda x: round(x, 5), actual_range)))
-            # self._DEBUG_STOP = True
+            self._DEBUG_STOP = True
         
         self.prev_scan_time = ntime
         self.prev_ranges = actual_range
@@ -186,7 +186,7 @@ def main():
     vel.linear.x = VELOCITY
     rate = rospy.Rate(10)
     try:
-        for _ in range(100):  # 10 secs
+        while rospy.is_shutdown():  # 10 secs
             pub.publish(vel)
             rate.sleep()
     except Exception as e:
