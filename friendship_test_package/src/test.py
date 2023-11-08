@@ -3,7 +3,8 @@
 
 import rospy
 import math
-import enum
+# import enum
+from functools import reduce
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 
@@ -78,6 +79,8 @@ def constrain(value, minimum, maximum):
 
 
 class IncidentDetector:
+    DETECT_POOL = 3
+    
     def __init__(self):
         self._time = rospy.Time()
         self._DETECTING = False
@@ -135,8 +138,8 @@ class IncidentDetector:
         expected_range = self.expect_new_datas(self.prev_ranges, step)
         actual_range = laser_data.ranges
         detected = dict()
-        detect_pool1 = set()
-        detect_pool2 = set()
+        detect_pools = [set() for _ in range(self.DETECT_POOL)]
+        TEMP = (1 - self.DETECT_POOL) / 2
         for angle in range(360):
             if actual_range[angle] < 0.001 or expected_range[angle] < 0.001 or self.prev_ranges[angle] < 0.001:
                 continue
@@ -144,10 +147,10 @@ class IncidentDetector:
                 continue
             if actual_range[angle] < expected_range[angle] - constrain(expected_range[angle] / 1.5, 0.15, 0.5):
                 detected[angle] = (actual_range[angle], expected_range[angle])
-                detect_pool1.add(angle)
-                detect_pool2.add((angle+1)%360)
+                for i in range(self.DETECT_POOL):
+                    detect_pools[i].add((angle+TEMP+1))
         
-        actual_detect_angles = detect_pool1 & detect_pool2
+        actual_detect_angles = reduce(lambda x, y: x&y, detect_pools)
         
         rospy.loginfo("Incident detected! : %s", {k: detected[k] for k in actual_detect_angles})
         
