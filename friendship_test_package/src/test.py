@@ -183,6 +183,8 @@ def main():
     pub = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
     vel = Twist()
     vel.linear.x = VELOCITY
+    while pub.get_num_connections() == 0:
+        pass
     pub.publish(vel)
     
     rospy.Subscriber("scan", LaserScan, incident_detector.run)
