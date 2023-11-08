@@ -150,16 +150,16 @@ class IncidentDetector:
             if actual_ranges[angle] < expected_ranges[angle] - constrain(expected_ranges[angle] / 1.75, 0.15, 1):
                 detected[angle] = (actual_ranges[angle], expected_ranges[angle])
                 for i in range(self.DETECT_POOL):
-                    detect_pools[i].add((angle + TEMP + 1))
+                    detect_pools[i].add(angle + TEMP + 1)
         
         actual_detect_angles = reduce(lambda x, y: x & y, detect_pools)
         
-        rospy.loginfo("Incident detected! : %s", {k: detected[k] for k in actual_detect_angles})
         if actual_detect_angles:
             print(actual_detect_angles)
             print(dtime, step)
             print(self.prev_ranges)
             print(actual_ranges)
+        rospy.loginfo("Incident detected! : %s", {k: detected[k] for k in actual_detect_angles})
         
         self.prev_scan_time = ntime
         self.prev_ranges = actual_ranges
