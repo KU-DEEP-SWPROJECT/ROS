@@ -24,7 +24,7 @@ BOT_NAME_DEFAULT = "turtle_"
 
 # 회전: 양수 = 반시계방향
 class TurtleBot:
-    RATE_HZ = 50
+    RATE_HZ = 100
     BASE_DIST_SPEED = 1.0
     BASE_ANGLE_SPEED = 1.0
     BASE_STOP_TIME = 1.0
@@ -50,8 +50,13 @@ class TurtleBot:
         twist = self.twist_msg
         twist.linear.x = dist_speed
         print("[%s] move time: %.3f / speed: %.3f" % (self.name, move_time, dist_speed))
+        published_time = time.time()
         while (time.time() - start_time <= move_time):
+            delay = time.time() - published_time
+            if delay > 5 / self.RATE_HZ:
+                print("[%s] delayed publish! (move): %.6f" % (self.name, delay))
             self.publisher.publish(self.twist_msg)
+            published_time = time.time()
             self.RATE.sleep()
         self.stop()
 
@@ -63,8 +68,13 @@ class TurtleBot:
         twist = self.twist_msg
         twist.angular.z = angle_speed
         print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, rotate_time, angle_speed))
+        published_time = time.time()
         while (time.time() - start_time <= rotate_time):
+            delay = time.time() - published_time
+            if delay > 5 / self.RATE_HZ:
+                print("[%s] delayed publish! (rotate): %.6f" % (self.name, delay))
             self.publisher.publish(self.twist_msg)
+            published_time = time.time()
             self.RATE.sleep()
         self.stop()
 
@@ -77,8 +87,13 @@ class TurtleBot:
         twist.linear.x = 0
         twist.angular.z = 0
         print("[%s] stop time: %.3f" % (self.name, stop_time))
+        published_time = time.time()
         while (time.time() - start_time <= stop_time):
+            delay = time.time() - published_time
+            if delay > 5 / self.RATE_HZ:
+                print("[%s] delayed publish! (stop): %.6f" % (self.name, delay))
             self.publisher.publish(self.twist_msg)
+            published_time = time.time()
             self.RATE.sleep()
 
     def push_command(self, cmd):
