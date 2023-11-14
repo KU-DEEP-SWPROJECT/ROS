@@ -42,11 +42,15 @@ class TurtleBot:
         self.twist_msg.angular.y = 0
         self.twist_msg.angular.z = 0
     
-    def move(self, move_time, dist_speed=None):
+    def move(self, dist, dist_speed=None, m_time=None):
         if dist_speed is None:
             dist_speed = self.BASE_DIST_SPEED
+        if m_time is None:
+            move_time = dist/dist_speed
+        else:
+            move_time=m_time
         start_time = time.time()
-
+        #need time Not None, speed is None && all not None
         twist = self.twist_msg
         twist.linear.x = dist_speed
         print("[%s] move time: %.3f / speed: %.3f" % (self.name, move_time, dist_speed))
@@ -60,9 +64,16 @@ class TurtleBot:
             self.RATE.sleep()
         self.stop()
 
-    def rotate(self, rotate_time, angle_speed=None):
+    def rotate(self, angle, angle_speed=None, r_time=None):
         if angle_speed is None:
             angle_speed = self.BASE_ANGLE_SPEED
+        #need time Not None, speed is None && all not None
+        if r_time is None:
+            rotate_time = angle/angle_speed
+        else:
+            rotate_time = r_time
+        if angle<0:
+            angle_speed *= -1
         start_time = time.time()
 
         twist = self.twist_msg
@@ -113,13 +124,13 @@ class TurtleBot:
             try:
                 if cmd == 'F':
                     dist = float(arg)
-                    self.move(dist / self.BASE_DIST_SPEED, 0.1)
+                    self.move(dist , 0.5)
                 elif cmd == 'R':
                     angle = float(arg)
-                    self.rotate(angle / self.BASE_ANGLE_SPEED, 1.0)
+                    self.rotate(angle ,0.5)
                 elif cmd == 'S':
                     if arg:
-                        self.stop(int(arg))
+                        self.stop(float(arg))
                     else:
                         self.stop()
                 elif cmd == 'W':
