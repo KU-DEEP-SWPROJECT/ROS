@@ -19,7 +19,7 @@ else:
     import termios
     import tty
 
-BOT_COUNT = 2
+BOT_COUNT = 3
 BOT_NAME_DEFAULT = "turtle_"
 
 # 회전: 양수 = 반시계방향
