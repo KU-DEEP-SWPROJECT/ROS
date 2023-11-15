@@ -94,7 +94,7 @@ class TurtleBot:
             raise ValueError("Lack of arguments.")
         if check_param_bit in {0b011, 0b110}:
             # only angle or rotate_time is given (011, 110) => use max speed
-            speed = self.MAX_LINEAR_SPEED
+            speed = self.MAX_ANGULAR_SPEED
         if check_param_bit & 0b100 == 0:
             if check_param_bit & 0b001:
                 # angle is given, speed is given or MAX_LINEAR_SPEED (001, 011) => calculate time
