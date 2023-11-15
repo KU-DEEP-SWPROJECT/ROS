@@ -10,7 +10,6 @@ import threading
 import time
 from geometry_msgs.msg import Twist
 from collections import deque
-from typing import List, AnyStr, TYPE_CHECKING
 
 
 if sys.platform == 'win32':
@@ -19,20 +18,29 @@ else:
     import termios
     import tty
 
-BOT_COUNT = 3
-BOT_NAME_DEFAULT = "turtle_"
-
 # 회전: 양수 = 반시계방향
 class TurtleBot:
-    RATE_HZ = 100
-    BASE_DIST_SPEED = 1.0
-    BASE_ANGLE_SPEED = 1.0
+    __ID = 1
+    RATE_HZ = 10
     BASE_STOP_TIME = 1.0
+    BOT_NAME_PREFIX = "turtle_"
     
-    def __init__(self, robot_name):
+    # limitations of turtlebot3 burger model
+    # MAX_LINEAR_SPEED  = 0.22  # m/s
+    # MAX_ANGULAR_SPEED = 2.84  # rad/s
+    
+    # let's limit them slightly slower
+    MAX_LINEAR_SPEED  = 0.2  # m/s
+    MAX_ANGULAR_SPEED = 2.8  # rad/s
+    
+    def __init__(self, robot_name=None):
         self.queue = deque([])
         self.RATE = rospy.Rate(self.RATE_HZ)
-        self.name = robot_name
+        if robot_name is None:
+            self.name = self.BOT_NAME_PREFIX + str(TurtleBot.__ID)
+            TurtleBot.__ID += 1
+        else:
+            self.name = self.BOT_NAME_PREFIX + robot_name
         self.publisher = rospy.Publisher('/'+self.name+'/cmd_vel', Twist, queue_size = 20)
         self.twist_msg = Twist()
         self.twist_msg.linear.x = 0
@@ -42,18 +50,32 @@ class TurtleBot:
         self.twist_msg.angular.y = 0
         self.twist_msg.angular.z = 0
     
-    def move(self, dist, dist_speed=None, m_time=None):
-        if dist_speed is None:
-            dist_speed = self.BASE_DIST_SPEED
-        if m_time is None:
-            move_time = dist/dist_speed
-        else:
-            move_time=m_time
+    def move(self, dist=None, speed=None, move_time=None):
+        # (speed, move_time) has higher priority
+        check_param_bit = (dist is None) << 2 | (speed is None) << 1 | (move_time is None)
+        if check_param_bit | 0b010 == 0b111:
+            # dist and move_time is not given (111, 101) => raise error
+            raise ValueError("Lack of arguments.")
+        if check_param_bit in {0b011, 0b110}:
+            # only dist or move_time is given (011, 110) => use max speed
+            speed = self.MAX_LINEAR_SPEED
+        if check_param_bit & 0b100 == 0:
+            if check_param_bit & 0b001:
+                # dist is given, speed is given or MAX_LINEAR_SPEED (001, 011) => calculate time
+                move_time = dist / speed
+            elif check_param_bit == 0b010:
+                # dist and move_time is given and speed is not given (010) => calculate speed
+                speed = dist / move_time
+        # 100, 000 are OK as itself
+
+        if move_time < 0:
+            speed *= -1
+            move_time *= -1
+        
         start_time = time.time()
-        #need time Not None, speed is None && all not None
         twist = self.twist_msg
-        twist.linear.x = dist_speed
-        print("[%s] move time: %.3f / speed: %.3f" % (self.name, move_time, dist_speed))
+        twist.linear.x = speed
+        print("[%s] move time: %.3f / speed: %.3f" % (self.name, move_time, speed))
         published_time = time.time()
         while (time.time() - start_time <= move_time):
             delay = time.time() - published_time
@@ -64,21 +86,32 @@ class TurtleBot:
             self.RATE.sleep()
         self.stop()
 
-    def rotate(self, angle, angle_speed=None, r_time=None):
-        if angle_speed is None:
-            angle_speed = self.BASE_ANGLE_SPEED
-        #need time Not None, speed is None && all not None
-        if r_time is None:
-            rotate_time = angle/angle_speed
-        else:
-            rotate_time = r_time
-        if angle<0:
-            angle_speed *= -1
-        start_time = time.time()
+    def rotate(self, angle=None, speed=None, rotate_time=None):
+        # (speed, rotate_time) has higher priority
+        check_param_bit = (angle is None) << 2 | (speed is None) << 1 | (rotate_time is None)
+        if check_param_bit | 0b010 == 0b111:
+            # angle and rotate_time is not given (111, 101) => raise error
+            raise ValueError("Lack of arguments.")
+        if check_param_bit in {0b011, 0b110}:
+            # only angle or rotate_time is given (011, 110) => use max speed
+            speed = self.MAX_LINEAR_SPEED
+        if check_param_bit & 0b100 == 0:
+            if check_param_bit & 0b001:
+                # angle is given, speed is given or MAX_LINEAR_SPEED (001, 011) => calculate time
+                rotate_time = angle / speed
+            elif check_param_bit == 0b010:
+                # angle and rotate_time is given and speed is not given (010) => calculate speed
+                speed = angle / rotate_time
+        # 100, 000 are OK as itself
+        
+        if rotate_time < 0:
+            speed *= -1
+            rotate_time *= -1
 
+        start_time = time.time()
         twist = self.twist_msg
-        twist.angular.z = angle_speed
-        print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, rotate_time, angle_speed))
+        twist.angular.z = speed
+        print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, rotate_time, speed))
         published_time = time.time()
         while (time.time() - start_time <= rotate_time):
             delay = time.time() - published_time
@@ -115,7 +148,7 @@ class TurtleBot:
             self.push_command(command)
 
     def set_queue(self, command_string):
-        self.queue = deque(command_string.split("/"))
+        self.queue = deque(command_string.split('/'))
 
     def run(self):
         while self.queue:
@@ -124,10 +157,10 @@ class TurtleBot:
             try:
                 if cmd == 'F':
                     dist = float(arg)
-                    self.move(dist , 0.5)
+                    self.move(dist=dist)
                 elif cmd == 'R':
                     angle = float(arg)
-                    self.rotate(angle ,0.5)
+                    self.rotate(angle=angle)
                 elif cmd == 'S':
                     if arg:
                         self.stop(float(arg))
@@ -141,7 +174,7 @@ class TurtleBot:
                 print("[%s] [Turtlebot#run] Error: Invaild argument type: %s (%s)" % (self.name, arg, type(arg).__name__))
 
 class BotController:
-    def __init__(self, array_of_bot: List[TurtleBot]):
+    def __init__(self, array_of_bot):
         self.bots = array_of_bot
         self.command_array = []
         pass
@@ -155,7 +188,7 @@ class BotController:
             num = int(num)
         except ValueError:
             print("[BotController#execute_cmd] Error: Bot number is not an integer type: %s (%s)" % (num, type(num).__name__))
-        if num < 1 or num > BOT_COUNT:
+        if num < 1 or num >= len(self.bots):
             print("[BotController#execute_cmd] Error: Bot number (%d) is out of range." % num)
             return
         self.bots[num].set_queue(cmd)
@@ -177,11 +210,12 @@ class BotController:
 if __name__=="__main__":
     try:
         rospy.init_node('teleop_twist_keyboard')
+        BOT_COUNT = int(input("터틀봇 운영 대수: "))
         bots = [None]
-        for i in range(1, BOT_COUNT + 1):
-            bots.append(TurtleBot(BOT_NAME_DEFAULT + str(i)))
+        for i in range(BOT_COUNT):
+            bots.append(TurtleBot())
         
-        controller=BotController(bots)
+        controller = BotController(bots)
         print("터틀봇에게 전송할 명령을 입력하세요.")
         print("(그만 입력하려면 아무것도 입력하지 않고 Enter를 누르세요.)")
         while True:
