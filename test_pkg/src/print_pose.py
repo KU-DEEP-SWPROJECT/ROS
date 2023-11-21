@@ -74,7 +74,7 @@ class TurtleBot3:
         return constant * self.get_dist(goal_pose)
         
     def get_angle(self, goal_pose):
-        return = atan2(goal_pose.y - self.pos_y_2d, goal_pose.x - self.pos_x_2d)
+        return atan2(goal_pose.y - self.pos_y_2d, goal_pose.x - self.pos_x_2d)
 
     def get_ang_z(self, goal_pose, constant = 1.15):        
         return constant * (self.get_angle(goal_pose) - self.theta_2d)
@@ -116,8 +116,8 @@ class TurtleBot3:
         while not rospy.is_shutdown():
             if(cnt4print >=10):
                 cnt4print = 0
-                print_pose()
-                print_pure_pose()
+                self.print_pose()
+                self.print_pure_pose()
             self.rate.sleep()
             
         print("print pose node close")
@@ -125,7 +125,7 @@ class TurtleBot3:
     def print_pose(self):
         print("pose      : p.x: %f,  p.y: %f,  th: %f" %(self.pos_x_2d, self.pos_y_2d, self.theta_2d))
         
-    def print_pure_pose(self)
+    def print_pure_pose(self):
         print("pure pose :pp.x: %f, pp.y: %f,pth1:  %f, pth2: %f"%(self.pure_x,self.pure_y,self.pure_th1,self.pure_th2))
 
 if __name__ == '__main__':

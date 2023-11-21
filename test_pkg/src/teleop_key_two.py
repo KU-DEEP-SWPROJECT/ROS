@@ -286,5 +286,5 @@ if __name__=="__main__":
 
     finally:
         pub_thread1.stop()
-    	pub_thread2.stop()
+        pub_thread2.stop()
         restoreTerminalSettings(settings)

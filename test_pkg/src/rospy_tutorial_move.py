@@ -19,9 +19,9 @@ if __name__ == '__main__':
     try:
         x = MoveTurtle()
         for i in range(100):
-			x.move_turtle()
+            x.move_turtle()
 		#while not rospy.is_shutdown():
 		 #   x.move_turtle()
     except rospy.ROSInterruptException:
-		print("exception")
-		pass
+        print("exception")
+        pass
