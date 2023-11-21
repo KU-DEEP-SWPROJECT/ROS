@@ -12,7 +12,7 @@ class TurtleBot3:
 
     def __init__(self):
         rospy.init_node('print_pose', anonymous = True)
-        self.sub  = rospy.Subscriber('/odom', Odometry, self.get_odom  )
+        self.sub  = rospy.Subscriber('turtle_1/odom', Odometry, self.get_odom  )
         self.pub  = rospy.Publisher( '/cmd_vel', Twist, queue_size = 10)
         self.rate = rospy.Rate(10)
         
@@ -64,7 +64,8 @@ class TurtleBot3:
         self.pure_th2 = theta
         pos_x = data.pose.pose.position.x
         pos_y = data.pose.pose.position.y
-
+        self.pure_x=pos_x
+        self.pure_y=pos_y
         return pos_x, pos_y, theta
         
     def get_dist(self, goal_pose):
@@ -113,20 +114,19 @@ class TurtleBot3:
         rospy.spin()
     def getOdom(self):
         cnt4print = 0
+        print("getOdom function start")
+        print("ros shutdown"+(str)(rospy.is_shutdown()))
         while not rospy.is_shutdown():
             if(cnt4print >=10):
                 cnt4print = 0
                 self.print_pose()
                 self.print_pure_pose()
             self.rate.sleep()
-            
+            cnt4print +=1     
         print("print pose node close")
                 
     def print_pose(self):
         print("pose      : p.x: %f,  p.y: %f,  th: %f" %(self.pos_x_2d, self.pos_y_2d, self.theta_2d))
-        
-    def print_pure_pose(self):
-        print("pure pose :pp.x: %f, pp.y: %f,pth1:  %f, pth2: %f"%(self.pure_x,self.pure_y,self.pure_th1,self.pure_th2))
 
 if __name__ == '__main__':
     try:
