@@ -10,9 +10,10 @@ from sensor_msgs.msg import LaserScan
 class IncidentDetector:
     INCIDENT_DISTANCE = 0.2  # meters
     
-    def __init__(self):
+    def __init__(self, scan_prefix=''):
+        self.scan_prefix = scan_prefix
         self.callback = self.base_callback
-        rospy.Subscriber("scan", LaserScan, self._callback)
+        rospy.Subscriber(scan_prefix + "/scan", LaserScan, self._callback)
     
     def _callback(self, arg):
         self.callback(arg)
@@ -23,7 +24,7 @@ class IncidentDetector:
 
 if __name__ == '__main__':
     rospy.init_node("incident_detector_node")
-    pub = rospy.Publisher("incident_detect", String, queue_size=10)
+    pub = rospy.Publisher("test_incident_detect", String, queue_size=10)
     incident_detector = IncidentDetector()
     
     def foo(angles):
