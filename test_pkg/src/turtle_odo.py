@@ -47,10 +47,11 @@ class TurtleBot3:
     def get_pose(self, data):
         q = (data.pose.pose.orientation.x, data.pose.pose.orientation.y, 
              data.pose.pose.orientation.z, data.pose.pose.orientation.w)
-             
+        print(q)     
         theta = euler_from_quaternion(q)[2]	# euler_from_quaternion(q)[0] - roll
 		                                    # euler_from_quaternion(q)[1] - pitch
 		                                    # euler_from_quaternion(q)[2] - yaw <---
+        print(theta)
         if theta < 0:
             theta = theta + pi * 2
         if theta > pi * 2:

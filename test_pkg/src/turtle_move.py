@@ -111,6 +111,7 @@ class TurtleBot:
         start_time = time.time()
         twist = self.twist_msg
         twist.angular.z = speed
+        print(speed)
         print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, rotate_time, speed))
         published_time = time.time()
         while (time.time() - start_time <= rotate_time):

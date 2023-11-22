@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+import sys
+print(sys.version)
+
 import rospy
 from turtlesim.msg import Pose
 from nav_msgs.msg import Odometry
@@ -92,7 +95,7 @@ class TurtleBot3:
 
         while(self.get_dist(goal_pose) >= tolerance):
             
-            if(cnt4print >= 10):
+            if(cnt4print >=10):
                 cnt4print = 0
                 self.print_pose()
             
@@ -112,12 +115,13 @@ class TurtleBot3:
         print("Robot is arrived at goal position!")
         
         rospy.spin()
+	
     def getOdom(self):
         cnt4print = 0
         print("getOdom function start")
         print("ros shutdown"+(str)(rospy.is_shutdown()))
         while not rospy.is_shutdown():
-            if(cnt4print >=10):
+            if(cnt4print >= 2):
                 cnt4print = 0
                 self.print_pose()
                 self.print_pure_pose()
@@ -127,7 +131,8 @@ class TurtleBot3:
                 
     def print_pose(self):
         print("pose      : p.x: %f,  p.y: %f,  th: %f" %(self.pos_x_2d, self.pos_y_2d, self.theta_2d))
-
+    def print_pure_pose(self):
+        print("pure pose: pp.x: %f, pp.y: %f,pp.th1:%f,pp.th2:%f" %(self.pure_x,self.pure_y,self.pure_th1,self.pure_th2))
 if __name__ == '__main__':
     try:
         
