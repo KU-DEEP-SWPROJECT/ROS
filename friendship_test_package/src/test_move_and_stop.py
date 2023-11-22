@@ -39,10 +39,13 @@ class State(enum.Enum):
 
 # 회전: 양수 = 반시계방향
 class TurtleBot:
-    __ID = 1
     RATE_HZ = 10
     BASE_STOP_TIME = 1.0
     BOT_NAME_PREFIX = "turtle_"
+    
+    _CHECK_RATE_HZ = 50
+    
+    __ID = 1
     
     # limitations of turtlebot3 burger model
     # MAX_LINEAR_SPEED  = 0.22  # m/s
@@ -50,7 +53,7 @@ class TurtleBot:
     
     # let's limit them slightly slower
     MAX_LINEAR_SPEED  = 0.2  # m/s
-    MAX_ANGULAR_SPEED = 2.8  # rad/s
+    MAX_ANGULAR_SPEED = 2.5  # rad/s
     
     def __init__(self, robot_name=None):
         self.queue = deque([])
@@ -74,6 +77,12 @@ class TurtleBot:
         self.condition = Condition()
         self.incident_detector = IncidentDetector(self.name)
         self.incident_detector.callback = self.incident_callback
+        
+        self._CHECK_RATE = rospy.Rate(self._CHECK_RATE_HZ)
+        
+        self.__terminate = threading.Event()
+        self.__task = threading.Thread(target=self.publishing_task)
+        self.__task.start()
     
     @staticmethod
     def __range_predict(radius, move=0.0):
@@ -134,12 +143,15 @@ class TurtleBot:
         st = time.time()
         self.condition.acquire()
         if self.got_incident:
+            temp_twist = self.twist_msg
             while not rospy.is_shutdown():
                 rospy.loginfo("[%s] Incident detected! Wait for removed...", self.name)
-                self.publisher.publish(Twist())
-                self.condition.wait_for(lambda: not self.got_incident, timeout=3.0)
+                self.twist_msg = Twist()
+                self.publisher.publish(self.twist_msg)
+                self.condition.wait_for(lambda: not self.got_incident)
                 if not self.got_incident:
                     rospy.loginfo("[%s] Incident has removed. Continuing the task...", self.name)
+                    self.twist_msg = temp_twist
                     break
         self.condition.notify()
         self.condition.release()
@@ -151,34 +163,27 @@ class TurtleBot:
         self.condition.notify()
         self.condition.release()
     
+    def publishing_task(self):
+        while not self.__terminate.is_set():
+            self.publisher.publish(self.twist_msg)
+            self.RATE.sleep()
+    
     def _move_linear(self, speed, move_time):
         start_time = time.time()
         self.twist_msg.linear.x = speed
         print("[%s] move time: %.3f / speed: %.3f" % (self.name, move_time, speed))
-        # published_time = time.time()
         while (time.time() - start_time <= move_time):
-            # delay = time.time() - published_time
-            # if delay > 5 / self.RATE_HZ:
-            #     print("[%s] delayed publish! (move): %.6f" % (self.name, delay))
-            # published_time = time.time()
-            self.publisher.publish(self.twist_msg)
-            self.RATE.sleep()
             start_time += self.check_incident()
+            self._CHECK_RATE.sleep()
         self.stop()
 
     def _move_angular(self, speed, rotate_time):
         start_time = time.time()
         self.twist_msg.angular.z = speed
         print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, rotate_time, speed))
-        # published_time = time.time()
         while (time.time() - start_time <= rotate_time):
-            # delay = time.time() - published_time
-            # if delay > 5 / self.RATE_HZ:
-            #     print("[%s] delayed publish! (rotate): %.6f" % (self.name, delay))
-            # published_time = time.time()
-            self.publisher.publish(self.twist_msg)
-            self.RATE.sleep()
             start_time += self.check_incident()
+            self._CHECK_RATE.sleep()
         self.stop()
 
     def stop(self, stop_time=None):
@@ -188,13 +193,8 @@ class TurtleBot:
         self.twist_msg.linear.x = 0
         self.twist_msg.angular.z = 0
         print("[%s] stop time: %.3f" % (self.name, stop_time))
-        published_time = time.time()
         while (time.time() - start_time <= stop_time):
-            delay = time.time() - published_time
-            if delay > 5 / self.RATE_HZ:
-                print("[%s] delayed publish! (stop): %.6f" % (self.name, delay))
             self.publisher.publish(self.twist_msg)
-            published_time = time.time()
             self.RATE.sleep()
         self.set_state(State.PARKING)
     
@@ -274,7 +274,7 @@ class TurtleBot:
     def set_queue(self, command_string):
         self.queue = deque(command_string.split('/'))
 
-    def run(self):
+    def run(self, terminate=True):
         while self.queue:
             q = self.queue.popleft()
             cmd, arg = q[0], q[1:]
@@ -283,8 +283,8 @@ class TurtleBot:
                     dist = float(arg)
                     self.forward(dist=dist)
                 elif cmd == 'R':
-                    angle = float(arg)
-                    self.rotate(angle=angle)
+                    angle = float(arg) * math.pi / 180.0
+                    self.rotate(angle=angle, speed=0.5)
                 elif cmd == 'S':
                     if arg:
                         self.stop(float(arg))
@@ -296,6 +296,11 @@ class TurtleBot:
                     print("[%s] [Turtlebot#run] Error: Invalid command keyword: %s" % (self.name, cmd))
             except ValueError:
                 print("[%s] [Turtlebot#run] Error: Invaild argument type: %s (%s)" % (self.name, arg, type(arg).__name__))
+        if terminate:
+            self.terminate()
+    
+    def terminate(self):
+        self.__terminate.set()
 
 class BotController:
     def __init__(self, array_of_bot):
