@@ -338,7 +338,7 @@ class BotController:
 
 if __name__=="__main__":
     try:
-        rospy.init_node('teleop_twist_keyboard')
+        rospy.init_node('test_move_and_stop')
         BOT_COUNT = int(input("터틀봇 운영 대수: "))
         bots = [None]
         for i in range(BOT_COUNT):
