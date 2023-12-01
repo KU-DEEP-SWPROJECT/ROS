@@ -453,7 +453,7 @@ class BotController:
         threads = []
         active_bots = []
         for turtle_bot in self.bots:
-            if turtle_bot is not None:
+            if turtle_bot is not None and turtle_bot.twist_pub.get_num_connections() > 0:
                 threads.append(Thread(target=turtle_bot.carry))
                 active_bots.append(turtle_bot)
         for thread in threads:
