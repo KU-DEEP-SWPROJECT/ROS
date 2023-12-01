@@ -317,6 +317,8 @@ class TurtleBot:
             self.condition.notify()
         
         while True:
+            if self.last_front_data is None:
+                continue
             try:
                 nearest_dist, nearest_angle = min(self.last_front_data)
                 if nearest_angle == 0:
@@ -327,11 +329,10 @@ class TurtleBot:
                     nearest_angle -= 360
                 self.rotate(angle=nearest_angle * pi / 180.0,
                             speed=self.MAX_ANGULAR_SPEED / 10.0)
-            except TypeError:  # not scanned yet
-                continue
             except ValueError:  # no objects in front of the bot
                 self.stop()
                 return
+            self.RATE.sleep()
             
         with self.condition:
             self.state = State.CARRY_READY_TO_STICK
@@ -446,6 +447,8 @@ class BotController:
             thread.start()
         while True:
             for bot in self.bots:
+                if bot is None:
+                    continue
                 bot.condition.acquire()
             try:
                 for bot in self.bots:
@@ -459,6 +462,8 @@ class BotController:
                 raise
             finally:
                 for bot in self.bots:
+                    if bot is None:
+                        continue
                     bot.condition.notify()
                     bot.condition.release()
         for thread in threads:
