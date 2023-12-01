@@ -6,7 +6,7 @@ print(sys.version)
 
 # import roslib; roslib.load_manifest('teleop_twist_keyboard')
 import rospy
-import enum
+from enum import Enum, auto
 import threading
 from threading import Thread, Condition
 import time
@@ -27,16 +27,20 @@ else:
     import termios
     import tty
 
-class State(enum.Enum):
-    PARKING = 0
-    FORWARD = 1
-    BACKWARD = 2
-    ROTATE = 3
-    FOLLOW = 4
-    WAIT_ROTATE = 5
-    CARRYING = 6
-    CARRY_MOVE_FORWARD = 7
-    CARRY_MOVE_BACKWARD = 8
+class State(Enum):
+    PARKING = auto()
+    FORWARD = auto()
+    BACKWARD = auto()
+    ROTATE = auto()
+    FOLLOW = auto()
+    WAIT_ROTATE = auto()
+    CARRY_WAIT = auto()
+    CARRY_ALIGN = auto()
+    CARRY_READY_TO_STICK = auto()
+    CARRY_STICK = auto()
+    CARRY_STANDBY = auto()
+    CARRYING_MOVE_FORWARD = auto()
+    CARRYING_MOVE_BACKWARD = auto()
 
 
 # 회전: 양수 = 반시계방향
@@ -88,7 +92,8 @@ class TurtleBot:
         self.condition = Condition()
         self.incident_detector = IncidentDetector(self.name)
         self.incident_detector.callback = self.incident_callback
-
+        
+        self.last_front_data = None  # for carrying task
     
     @staticmethod
     def __range_predict(radius, move=0.0):
@@ -110,61 +115,60 @@ class TurtleBot:
         angles = list(filter(lambda x: 0.01 < data.ranges[x] < limitation[x], range(360)))
         fronts = list(filter(lambda angle: angle < 30 or angle > 330, angles))
         backs = list(filter(lambda angle: 150 < angle < 210, angles))
-        self.condition.acquire()
-        if self.state == State.PARKING:
-            pass
-        elif self.state == State.FORWARD:
-            if fronts and not self.got_incident:
-                self.got_incident = True  # STOP
-            elif not fronts:
-                self.got_incident = False
-        elif self.state == State.BACKWARD:
-            if backs and not self.got_incident:
-                self.got_incident = True  # STOP
-            elif not backs:
-                self.got_incident = False
-        elif self.state == State.ROTATE:
-            pass
-        elif self.state == State.FOLLOW:
-            if fronts and not self.got_incident:
-                self.got_incident = True  # STOP
-            elif not fronts:
-                self.got_incident = False
-        elif self.state == State.WAIT_ROTATE:
-            if fronts and not self.got_incident:
-                self.got_incident = True  # STOP
-            elif not fronts:
-                self.got_incident = False
-        elif self.state == State.CARRYING:
-            pass
-        elif self.state == State.CARRY_MOVE_FORWARD:
-            pass
-        elif self.state == State.CARRY_MOVE_BACKWARD:
-            if backs and not self.got_incident:
-                self.got_incident = True  # STOP
-        self.condition.notify()
-        self.condition.release()
+        self.last_front_data = [(data.ranges[x], x) for x in angles]
+        with self.condition:
+            if self.state == State.PARKING:
+                pass
+            elif self.state == State.FORWARD:
+                if fronts and not self.got_incident:
+                    self.got_incident = True  # STOP
+                elif not fronts:
+                    self.got_incident = False
+            elif self.state == State.BACKWARD:
+                if backs and not self.got_incident:
+                    self.got_incident = True  # STOP
+                elif not backs:
+                    self.got_incident = False
+            elif self.state == State.ROTATE:
+                pass
+            elif self.state == State.FOLLOW:
+                if fronts and not self.got_incident:
+                    self.got_incident = True  # STOP
+                elif not fronts:
+                    self.got_incident = False
+            elif self.state == State.WAIT_ROTATE:
+                if fronts and not self.got_incident:
+                    self.got_incident = True  # STOP
+                elif not fronts:
+                    self.got_incident = False
+            elif self.state == State.CARRY_WAIT:
+                pass
+            elif self.state == State.CARRY_ALIGN:
+                pass
+            elif self.state == State.CARRY_STICK:
+                pass
+            elif self.state == State.CARRY_STANDBY:
+                pass
+            elif self.state == State.CARRYING_MOVE_FORWARD:
+                pass
+            elif self.state == State.CARRYING_MOVE_BACKWARD:
+                if backs and not self.got_incident:
+                    self.got_incident = True  # STOP
+            self.condition.notify()
     
     def check_incident(self):
         st = time.time()
-        self.condition.acquire()
-        if self.got_incident:
-            while not rospy.is_shutdown():
-                rospy.loginfo("[%s] Incident detected! Wait for removed...", self.name)
-                self.publisher.publish(Twist())
-                self.condition.wait_for(lambda: not self.got_incident, timeout=3.0)
-                if not self.got_incident:
-                    rospy.loginfo("[%s] Incident has removed. Continuing the task...", self.name)
-                    break
-        self.condition.notify()
-        self.condition.release()
+        with self.condition:
+            if self.got_incident:
+                while not rospy.is_shutdown():
+                    rospy.loginfo("[%s] Incident detected! Wait for removed...", self.name)
+                    self.publisher.publish(Twist())
+                    self.condition.wait_for(lambda: not self.got_incident, timeout=3.0)
+                    if not self.got_incident:
+                        rospy.loginfo("[%s] Incident has removed. Continuing the task...", self.name)
+                        break
+            self.condition.notify()
         return time.time() - st
-
-    def set_state(self, state):
-        self.condition.acquire()
-        self.state = state
-        self.condition.notify()
-        self.condition.release()
 
     def move(self, dist=None, speed=None, move_time=None):
         # (speed, move_time) has higher priority
@@ -198,16 +202,20 @@ class TurtleBot:
         
         start_time = time.time()
         
-        if self.state == State.CARRYING:
-            if speed < 0:
-                self.set_state(State.CARRY_MOVE_BACKWARD)
+        with self.condition:
+            if self.state == State.CARRY_STANDBY:
+                if speed < 0:
+                    self.state = State.CARRYING_MOVE_BACKWARD
+                else:
+                    self.state = State.CARRYING_MOVE_FORWARD
+            elif self.state.name.startswith('CARRY_'):
+                pass
             else:
-                self.set_state(State.CARRY_MOVE_FORWARD)
-        else:
-            if speed < 0:
-                self.set_state(State.BACKWARD)
-            else:
-                self.set_state(State.FORWARD)
+                if speed < 0:
+                    self.state = State.BACKWARD
+                else:
+                    self.state = State.FORWARD
+            self.condition.notify()
 
         pos_now = Pose()
         print("pose now :",pos_now)
@@ -279,7 +287,10 @@ class TurtleBot:
         twist.angular.z = speed
         #print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, rotate_time, angle_speed))
         
-        self.set_state(State.ROTATE)
+        with self.condition:
+            if not self.state.name.startswith('CARRY_'):
+                self.state = State.ROTATE
+            self.condition.notify()
 
         print("distance: "+(str)(abs(self.pure_theta-goal_angle)))
         cnt = 0
@@ -303,15 +314,46 @@ class TurtleBot:
         twist = self.twist_msg
         twist.linear.x = 0
         twist.angular.z = 0
+        
+        with self.condition:
+            if self.state == State.CARRY_STICK:
+                self.state = State.CARRY_STANDBY
+            elif self.state.name.startswith('CARRY_'):
+                pass
+            else:
+                self.state = State.PARKING
+            self.condition.notify()
+
         print("[%s] stop time: %.3f" % (self.name, stop_time))
-        published_time = time.time()
         while (time.time() - start_time <= stop_time):
-            delay = time.time() - published_time
-            if delay > 5 / self.RATE_HZ:
-                print("[%s] delayed publish! (stop): %.6f" % (self.name, delay))
             self.publisher.publish(self.twist_msg)
-            published_time = time.time()
             self.RATE.sleep()
+    
+    def carry(self, target_dist=0):
+        with self.condition:
+            self.state = State.CARRY_WAIT
+            self.condition.notify()
+        
+        while True:
+            nearest_dist, nearest_angle = min(self.last_front_data)
+            if nearest_angle == 0:
+                break
+            with self.condition:
+                self.state = State.CARRY_ALIGN
+            if nearest_angle > 180:
+                nearest_angle -= 360
+            self.rotate(angle=nearest_angle * math.pi / 180.0,
+                        speed=self.MAX_ANGULAR_SPEED / 10.0)
+            
+        with self.condition:
+            self.state = State.CARRY_READY_TO_STICK
+            self.condition.wait_for(lambda: self.state == State.CARRY_STICK)
+        # In controller, it should check all bots are ready to stick, and set all states to starting sticking
+        # so all bots stick to the object simultaniously.
+        
+        self.move(dist=nearest_dist - target_dist + 0.05)
+        # make the wheels over-spin (5cm further) to make sure the bot is combined to frame.
+        self.stop()
 
     def push_command(self, cmd):
         self.queue.append(cmd)
@@ -343,6 +385,8 @@ class TurtleBot:
                     time.sleep(float(arg))
                 elif cmd == 'B':
                     self.move(dist=-1*dist)
+                elif cmd == 'C':
+                    self.carry()
                 else:
                     print("[%s] [Turtlebot#run] Error: Invalid command keyword: %s" % (self.name, cmd))
             except ValueError:
