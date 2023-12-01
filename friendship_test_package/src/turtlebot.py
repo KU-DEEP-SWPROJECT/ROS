@@ -342,8 +342,6 @@ class TurtleBot:
         with self.condition:
             self.state = State.CARRY_READY_TO_STICK
             self.condition.notify()
-        
-        with self.condition:
             print("[%s] Waiting the controller to change my state..." % self.name)
             self.condition.wait_for(lambda: self.state == State.CARRY_STICK)
             self.condition.notify()
