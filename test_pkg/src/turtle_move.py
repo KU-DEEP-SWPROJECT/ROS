@@ -159,9 +159,6 @@ class TurtleBot:
         self.condition.notify()
         self.condition.release()
         return time.time() - st
-        
-
-
 
     def move(self, dist=None, speed=None, move_time=None):
         # (speed, move_time) has higher priority
@@ -194,12 +191,17 @@ class TurtleBot:
             dist *= -1
         
         start_time = time.time()
-        incident_time=time.time()
-        #need time Not None, speed is None && all not None
         
-        
-        #print("[%s] move time: %.3f / speed: %.3f" % (self.name, move_time, dist_speed))
-        published_time = time.time()
+        if self.state == State.CARRYING:
+            if speed < 0:
+                self.set_state(State.CARRY_MOVE_BACKWARD)
+            else:
+                self.set_state(State.CARRY_MOVE_FORWARD)
+        else:
+            if speed < 0:
+                self.set_state(State.BACKWARD)
+            else:
+                self.set_state(State.FORWARD)
 
         pos_now = Pose()
         print("pose now :",pos_now)
@@ -208,17 +210,13 @@ class TurtleBot:
         pos_now.y = self.pos_y_2d
         cnt = 0
         while (float(self.get_dist(pos_now))<dist):
-            delay = time.time() - published_time
             cnt +=1
             if cnt> self.RATE_HZ:
                 print("distance : ",(self.get_dist(pos_now)))
                 print("pose now : ",self.pos_x_2d," ",self.pos_y_2d)   
                 cnt=0
-            if delay > float(5) / self.RATE_HZ:
-                print("[%s] delayed publish! (move): %.6f" % (self.name, delay))
             self.publisher.publish(self.twist_msg)
             start_time += self.check_incident()
-            published_time = time.time()
             self.RATE.sleep()
         print("[%s] end move | distance goal : %d " % (self.name, self.get_dist(pos_now) ))
         #print("end distance : ",(self.get_dist(pos_now)))
@@ -259,10 +257,7 @@ class TurtleBot:
             while angle>-2*pi:
                 angle +=2*pi
         #now goal angle -2 pi ~ 2 pi
-
         #if want, goal angle -pi ~ +pi
-        
-            
         goal_angle = self.pure_theta + angle
         
         if(goal_angle > 2 * pi):
@@ -273,25 +268,21 @@ class TurtleBot:
         print("angle now%f" %(self.theta_2d))
         print("goal angle : %f" %(goal_angle))
         print(float(5 / self.RATE_HZ))
-
             
         twist = self.twist_msg
         twist.angular.z = speed
         #print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, rotate_time, angle_speed))
+        
+        self.set_state(State.ROTATE)
 
-        published_time = time.time()
         print("distance: "+(str)(abs(self.pure_theta-goal_angle)))
         cnt = 0
         while (abs(self.pure_theta-goal_angle) > self.ANGLE_TORLERANCE): #or (2*pi - abs(self.theta_2d-goal_angle) > self.ANGLE_TORLERANCE):
-            delay = time.time() - published_time
             cnt +=1
             if cnt>50:
                 print("now : %f , speed: %f , Goal : %f   distance :%f"%(self.pure_theta,self.twist_msg.angular.z ,goal_angle,abs(self.pure_theta-goal_angle)))
                 cnt=0
-            if delay > float(5) / self.RATE_HZ:
-                print("[%s] delayed publish! (rotate): %.6f" % (self.name, delay))
             self.publisher.publish(self.twist_msg)
-            published_time = time.time()
             self.RATE.sleep()
         end_time = time.time()
         print("[%s] end rotate | distance goal : %d " % (self.name, self.pure_theta-goal_angle ))
