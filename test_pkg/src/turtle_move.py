@@ -160,6 +160,12 @@ class TurtleBot:
         self.condition.release()
         return time.time() - st
 
+    def set_state(self, state):
+        self.condition.acquire()
+        self.state = state
+        self.condition.notify()
+        self.condition.release()
+
     def move(self, dist=None, speed=None, move_time=None):
         # (speed, move_time) has higher priority
         check_param_bit = (dist is None) << 2 | (speed is None) << 1 | (move_time is None)
