@@ -331,6 +331,7 @@ class TurtleBot:
                     break
                 with self.condition:
                     self.state = State.CARRY_ALIGN
+                    self.condition.notify()
                 if nearest_angle > 180:
                     nearest_angle -= 360
                 self.rotate(angle=nearest_angle * pi / 180.0,
@@ -342,6 +343,8 @@ class TurtleBot:
         with self.condition:
             self.state = State.CARRY_READY_TO_STICK
             self.condition.notify()
+        
+        with self.condition:
             print("[%s] Waiting the controller to change my state..." % self.name)
             self.condition.wait_for(lambda: self.state == State.CARRY_STICK)
             self.condition.notify()
