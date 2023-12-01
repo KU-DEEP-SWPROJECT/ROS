@@ -254,7 +254,7 @@ class TurtleBot:
             
         twist = self.twist_msg
         twist.angular.z = speed
-        #print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, rotate_time, angle_speed))
+        print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, rotate_time, speed))
         
         with self.condition:
             if not self.state.name.startswith('CARRY_'):
@@ -433,30 +433,28 @@ class BotController:
     def carry_object(self):
         # Bots should be at the points after executing commands from the algorithm.
         threads = []
+        active_bots = []
         for turtle_bot in self.bots:
             if turtle_bot is not None:
                 threads.append(Thread(target=turtle_bot.carry))
+                active_bots.append(turtle_bot)
         for thread in threads:
             thread.start()
         while True:
-            for bot in self.bots:
-                if bot is None:
-                    continue
+            for bot in active_bots:
                 bot.condition.acquire()
             try:
-                for bot in self.bots:
+                for bot in active_bots:
                     if bot.state != State.CARRY_READY_TO_STICK:
                         break
                 else:  # All bots are ready to stick
-                    for bot in self.bots:
+                    for bot in active_bots:
                         bot.state = State.CARRY_STICK
                     break
             except:
                 raise
             finally:
-                for bot in self.bots:
-                    if bot is None:
-                        continue
+                for bot in active_bots:
                     bot.condition.notify()
                     bot.condition.release()
         for thread in threads:
