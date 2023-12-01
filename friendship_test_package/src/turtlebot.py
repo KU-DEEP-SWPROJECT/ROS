@@ -353,7 +353,6 @@ class TurtleBot:
         
         self.move(dist=nearest_dist - target_dist + 0.05)
         # make the wheels over-spin (5cm further) to make sure the bot is combined to frame.
-        self.stop()
 
     def push_command(self, cmd):
         self.queue.append(cmd)
