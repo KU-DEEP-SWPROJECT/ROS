@@ -6,10 +6,19 @@ print(sys.version)
 
 # import roslib; roslib.load_manifest('teleop_twist_keyboard')
 import rospy
+import enum
 import threading
+from threading import Thread, Condition
 import time
+from turtlesim.msg import Pose
 from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
 from collections import deque
+#from math import *
+import math
+from math import pow, atan2, asin, sqrt, pi
+
+from incident_detect import IncidentDetector
 
 
 if sys.platform == 'win32':
@@ -18,12 +27,26 @@ else:
     import termios
     import tty
 
+class State(enum.Enum):
+    PARKING = 0
+    FORWARD = 1
+    BACKWARD = 2
+    ROTATE = 3
+    FOLLOW = 4
+    WAIT_ROTATE = 5
+    CARRYING = 6
+    CARRY_MOVE_FORWARD = 7
+    CARRY_MOVE_BACKWARD = 8
+
+
 # 회전: 양수 = 반시계방향
 class TurtleBot:
     __ID = 1
-    RATE_HZ = 10
+    RATE_HZ = 100
     BASE_STOP_TIME = 1.0
     BOT_NAME_PREFIX = "turtle_"
+
+    ANGLE_TORLERANCE = 0.1
     
     # limitations of turtlebot3 burger model
     # MAX_LINEAR_SPEED  = 0.22  # m/s
@@ -42,6 +65,7 @@ class TurtleBot:
         else:
             self.name = self.BOT_NAME_PREFIX + robot_name
         self.publisher = rospy.Publisher('/'+self.name+'/cmd_vel', Twist, queue_size = 20)
+        self.sub  = rospy.Subscriber('/'+self.name+'/odom', Odometry, self.get_odom  )
         self.twist_msg = Twist()
         self.twist_msg.linear.x = 0
         self.twist_msg.linear.y = 0
@@ -49,7 +73,99 @@ class TurtleBot:
         self.twist_msg.angular.x = 0
         self.twist_msg.angular.y = 0
         self.twist_msg.angular.z = 0
+
+        # Turtlebot3 pose #
+        self.pos_x_2d = 0.0
+        self.pos_y_2d = 0.0
+        self.theta_2d = 0.0
+        self.pure_theta = 0.0
+        ###################
+        self.prev_theta_2d = 0.0
+        self.theta_2d_sum  = 0.0
+
+        self.state = State.PARKING
+        self.got_incident = False
+        self.condition = Condition()
+        self.incident_detector = IncidentDetector(self.name)
+        self.incident_detector.callback = self.incident_callback
+
     
+    @staticmethod
+    def __range_predict(radius, move=0.0):
+        result_dist = [0.0 for _ in range(360)]
+        sin_sq = [math.sin(i * math.pi / 180) ** 2 for i in range(-90, 90)]
+        cos_sq = [math.cos(i * math.pi / 180) ** 2 for i in range(-90, 90)]
+        r_sq = radius * radius
+        d_sq = move * move
+        for angle in range(-90, 90):
+            angle_idx = angle + 90
+            _x, _D = move * sin_sq[angle_idx], math.sqrt(d_sq * sin_sq[angle_idx] * cos_sq[angle_idx] + r_sq * cos_sq[angle_idx])
+            x1, x2 = _x + _D, _x - _D
+            result_dist[angle+180] = math.sqrt((x1 - move)**2 + r_sq - x1**2)
+            result_dist[angle%360] = math.sqrt((x2 - move)**2 + r_sq - x2**2)
+        return result_dist
+    
+    def incident_callback(self, data):
+        limitation = self.__range_predict(self.incident_detector.INCIDENT_DISTANCE, self.twist_msg.linear.x / 5)  # Scan data is published for 5 Hz.
+        angles = list(filter(lambda x: 0.01 < data.ranges[x] < limitation[x], range(360)))
+        fronts = list(filter(lambda angle: angle < 30 or angle > 330, angles))
+        backs = list(filter(lambda angle: 150 < angle < 210, angles))
+        self.condition.acquire()
+        if self.state == State.PARKING:
+            pass
+        elif self.state == State.FORWARD:
+            if fronts and not self.got_incident:
+                self.got_incident = True  # STOP
+            elif not fronts:
+                self.got_incident = False
+        elif self.state == State.BACKWARD:
+            if backs and not self.got_incident:
+                self.got_incident = True  # STOP
+            elif not backs:
+                self.got_incident = False
+        elif self.state == State.ROTATE:
+            pass
+        elif self.state == State.FOLLOW:
+            if fronts and not self.got_incident:
+                self.got_incident = True  # STOP
+            elif not fronts:
+                self.got_incident = False
+        elif self.state == State.WAIT_ROTATE:
+            if fronts and not self.got_incident:
+                self.got_incident = True  # STOP
+            elif not fronts:
+                self.got_incident = False
+        elif self.state == State.CARRYING:
+            pass
+        elif self.state == State.CARRY_MOVE_FORWARD:
+            pass
+        elif self.state == State.CARRY_MOVE_BACKWARD:
+            if backs and not self.got_incident:
+                self.got_incident = True  # STOP
+        self.condition.notify()
+        self.condition.release()
+    
+    def check_incident(self):
+        st = time.time()
+        self.condition.acquire()
+        if self.got_incident:
+            while not rospy.is_shutdown():
+                rospy.loginfo("[%s] Incident detected! Wait for removed...", self.name)
+                self.publisher.publish(Twist())
+                self.condition.wait_for(lambda: not self.got_incident, timeout=3.0)
+                if not self.got_incident:
+                    rospy.loginfo("[%s] Incident has removed. Continuing the task...", self.name)
+                    break
+        self.condition.notify()
+        self.condition.release()
+        return time.time() - st
+
+    def set_state(self, state):
+        self.condition.acquire()
+        self.state = state
+        self.condition.notify()
+        self.condition.release()
+
     def move(self, dist=None, speed=None, move_time=None):
         # (speed, move_time) has higher priority
         check_param_bit = (dist is None) << 2 | (speed is None) << 1 | (move_time is None)
@@ -58,7 +174,7 @@ class TurtleBot:
             raise ValueError("Lack of arguments.")
         if check_param_bit in {0b011, 0b110}:
             # only dist or move_time is given (011, 110) => use max speed
-            speed = self.MAX_LINEAR_SPEED
+            speed = self.MAX_LINEAR_SPEED/3
         if check_param_bit & 0b100 == 0:
             if check_param_bit & 0b001:
                 # dist is given, speed is given or MAX_LINEAR_SPEED (001, 011) => calculate time
@@ -67,23 +183,52 @@ class TurtleBot:
                 # dist and move_time is given and speed is not given (010) => calculate speed
                 speed = dist / move_time
         # 100, 000 are OK as itself
-
-        if move_time < 0:
-            speed *= -1
-            move_time *= -1
+        print("move start")
+        print("move input: "+str(dist))
         
-        start_time = time.time()
         twist = self.twist_msg
         twist.linear.x = speed
-        print("[%s] move time: %.3f / speed: %.3f" % (self.name, move_time, speed))
-        published_time = time.time()
-        while (time.time() - start_time <= move_time):
-            delay = time.time() - published_time
-            if delay > 5 / self.RATE_HZ:
-                print("[%s] delayed publish! (move): %.6f" % (self.name, delay))
+
+        if move_time < 0:
+            twist.linear.x = -1*speed
+            move_time *= -1
+        if  dist <0 :
+            twist.linear.x = -1*speed
+            dist *= -1
+        
+        start_time = time.time()
+        
+        if self.state == State.CARRYING:
+            if speed < 0:
+                self.set_state(State.CARRY_MOVE_BACKWARD)
+            else:
+                self.set_state(State.CARRY_MOVE_FORWARD)
+        else:
+            if speed < 0:
+                self.set_state(State.BACKWARD)
+            else:
+                self.set_state(State.FORWARD)
+
+        pos_now = Pose()
+        print("pose now :",pos_now)
+        print("dist now :",dist )
+        pos_now.x = self.pos_x_2d
+        pos_now.y = self.pos_y_2d
+        cnt = 0
+        while (float(self.get_dist(pos_now))<dist):
+            cnt +=1
+            if cnt> self.RATE_HZ:
+                print("distance : ",(self.get_dist(pos_now)))
+                print("pose now : ",self.pos_x_2d," ",self.pos_y_2d)   
+                cnt=0
             self.publisher.publish(self.twist_msg)
-            published_time = time.time()
+            start_time += self.check_incident()
             self.RATE.sleep()
+        print("[%s] end move | distance goal : %d " % (self.name, self.get_dist(pos_now) ))
+        #print("end distance : ",(self.get_dist(pos_now)))
+        end_time = time.time()
+        print("[%s] move time: %.3f / speed: %.3f" % (self.name, end_time-start_time, speed))
+        #print("pose now : ",self.pos_x_2d," ",self.pos_y_2d)   
         self.stop()
 
     def rotate(self, angle=None, speed=None, rotate_time=None):
@@ -94,7 +239,7 @@ class TurtleBot:
             raise ValueError("Lack of arguments.")
         if check_param_bit in {0b011, 0b110}:
             # only angle or rotate_time is given (011, 110) => use max speed
-            speed = self.MAX_ANGULAR_SPEED
+            speed = self.MAX_ANGULAR_SPEED/4
         if check_param_bit & 0b100 == 0:
             if check_param_bit & 0b001:
                 # angle is given, speed is given or MAX_LINEAR_SPEED (001, 011) => calculate time
@@ -109,17 +254,45 @@ class TurtleBot:
             rotate_time *= -1
 
         start_time = time.time()
+
+        pre_angle = self.pure_theta
+        if(angle>=2*pi):
+            while angle < 2*pi:
+                angle -=2*pi
+        if angle <=-2*pi:
+            while angle>-2*pi:
+                angle +=2*pi
+        #now goal angle -2 pi ~ 2 pi
+        #if want, goal angle -pi ~ +pi
+        goal_angle = self.pure_theta + angle
+        
+        if(goal_angle > 2 * pi):
+            goal_angle -= 2*pi
+        if(goal_angle <0):
+            goal_angle += 2*pi
+        print(self.RATE_HZ,self.ANGLE_TORLERANCE)
+        print("angle now%f" %(self.theta_2d))
+        print("goal angle : %f" %(goal_angle))
+        print(float(5 / self.RATE_HZ))
+            
         twist = self.twist_msg
         twist.angular.z = speed
-        print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, rotate_time, speed))
-        published_time = time.time()
-        while (time.time() - start_time <= rotate_time):
-            delay = time.time() - published_time
-            if delay > 5 / self.RATE_HZ:
-                print("[%s] delayed publish! (rotate): %.6f" % (self.name, delay))
+        #print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, rotate_time, angle_speed))
+        
+        self.set_state(State.ROTATE)
+
+        print("distance: "+(str)(abs(self.pure_theta-goal_angle)))
+        cnt = 0
+        while (abs(self.pure_theta-goal_angle) > self.ANGLE_TORLERANCE): #or (2*pi - abs(self.theta_2d-goal_angle) > self.ANGLE_TORLERANCE):
+            cnt +=1
+            if cnt>50:
+                print("now : %f , speed: %f , Goal : %f   distance :%f"%(self.pure_theta,self.twist_msg.angular.z ,goal_angle,abs(self.pure_theta-goal_angle)))
+                cnt=0
             self.publisher.publish(self.twist_msg)
-            published_time = time.time()
             self.RATE.sleep()
+        end_time = time.time()
+        print("[%s] end rotate | distance goal : %d " % (self.name, self.pure_theta-goal_angle ))
+        print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, end_time-start_time, speed))
         self.stop()
 
     def stop(self, stop_time=None):
@@ -168,10 +341,127 @@ class TurtleBot:
                         self.stop()
                 elif cmd == 'W':
                     time.sleep(float(arg))
+                elif cmd == 'B':
+                    self.move(dist=-1*dist)
                 else:
                     print("[%s] [Turtlebot#run] Error: Invalid command keyword: %s" % (self.name, cmd))
             except ValueError:
                 print("[%s] [Turtlebot#run] Error: Invaild argument type: %s (%s)" % (self.name, arg, type(arg).__name__))
+        # Turtlebot3 pose #
+        self.pos_x_2d = 0.0
+        self.pos_y_2d = 0.0
+        self.theta_2d = 0.0
+        ###################
+        self.prev_theta_2d = 0.0
+        self.theta_2d_sum  = 0.0
+           
+    def get_odom(self, msg):
+        pos_x, pos_y, theta = self.get_pose(msg)
+        
+        self.pos_x_2d = pos_x
+        self.pos_y_2d = pos_y
+        self.theta_2d = theta
+        self.pure_theta = theta
+        if   (self.theta_2d - self.prev_theta_2d) > 5.:
+            d_theta = (self.theta_2d - self.prev_theta_2d) - 2 * pi            
+        elif (self.theta_2d - self.prev_theta_2d) < -5.:
+            d_theta = (self.theta_2d - self.prev_theta_2d) + 2 * pi
+        else:
+            d_theta = (self.theta_2d - self.prev_theta_2d)
+        
+        self.theta_2d_sum  = self.theta_2d_sum + d_theta
+        self.prev_theta_2d = self.theta_2d
+        
+        self.theta_2d = self.theta_2d_sum
+            
+    def get_pose(self, data):
+        q = (data.pose.pose.orientation.x, data.pose.pose.orientation.y, 
+             data.pose.pose.orientation.z, data.pose.pose.orientation.w)
+             
+        theta = self.euler_from_quaternion(q)[2]	# euler_from_quaternion(q)[0] - roll
+		                                    # euler_from_quaternion(q)[1] - pitch
+		                                    # euler_from_quaternion(q)[2] - yaw <---
+        if theta < 0:
+            theta = theta + pi * 2
+        if theta > pi * 2:
+            theta = theta - pi * 2
+
+        pos_x = data.pose.pose.position.x
+        pos_y = data.pose.pose.position.y
+
+        return pos_x, pos_y, theta
+        
+    def get_dist(self, goal_pose):
+        return sqrt(pow((goal_pose.x-self.pos_x_2d),2) + pow((goal_pose.y-self.pos_y_2d),2))
+        
+    def get_lin_x(self, goal_pose, constant = 1.15):
+        return constant * self.get_dist(goal_pose)
+        
+    def get_angle(self, goal_pose):
+        return atan2(goal_pose.y - self.pos_y_2d, goal_pose.x - self.pos_x_2d)
+
+    def get_ang_z(self, goal_pose, constant = 1.15):        
+        return constant * (self.get_angle(goal_pose) - self.theta_2d)
+                
+    def move2goal(self,goal_x,goal_y):
+        goal_pose = Pose()
+
+        #goal_pose.x = input("Input x goal: " )
+        #goal_pose.y = input("Input y goal: " )
+        tolerance = 0.05
+
+        t = Twist()
+        cnt4print = 0	# counter for print pose every second(1Hz)
+
+        while(self.get_dist(goal_pose) >= tolerance):
+            
+            if(cnt4print >= 10):
+                cnt4print = 0
+                self.print_pose()
+            
+            cnt4print   = cnt4print + 1
+            
+            t.linear.x  = self.get_lin_x(goal_pose)
+            t.linear.y  = t.linear.z  = 0
+            
+            t.angular.x = t.angular.y = 0
+            t.angular.z = self.get_ang_z(goal_pose)
+
+            self.pub.publish(t)
+            self.rate.sleep()
+            
+        t.linear.x = t.angular.z = 0
+        self.pub.publish(t)
+        print("Robot is arrived at goal position!")
+        
+        rospy.spin()
+                
+    def print_pose(self):
+        print("p.x: %f,  p.y: %f,  th: %f" %(self.pos_x_2d, self.pos_y_2d, self.theta_2d))
+
+    def euler_from_quaternion(self,q):
+        """
+        Convert a quaternion into euler angles (roll, pitch, yaw)
+        roll is rotation around x in radians (counterclockwise)
+        pitch is rotation around y in radians (counterclockwise)
+        yaw is rotation around z in radians (counterclockwise)
+        """
+        x,y,z,w= q
+
+        t0 = +2.0 * (w * x + y * z)
+        t1 = +1.0 - 2.0 * (x * x + y * y)
+        roll_x = math.atan2(t0, t1)
+     
+        t2 = +2.0 * (w * y - z * x)
+        t2 = +1.0 if t2 > +1.0 else t2
+        t2 = -1.0 if t2 < -1.0 else t2
+        pitch_y = math.asin(t2)
+     
+        t3 = +2.0 * (w * z + x * y)
+        t4 = +1.0 - 2.0 * (y * y + z * z)
+        yaw_z = math.atan2(t3, t4)
+     
+        return roll_x, pitch_y, yaw_z # in radians
 
 class BotController:
     def __init__(self, array_of_bot):
