@@ -86,6 +86,7 @@ class TurtleBot:
         self.incident_detector.callback = self.incident_callback
         
         self.last_front_data = None  # for carrying task
+        rospy.on_shutdown(self.stop)
     
     @staticmethod
     def __range_predict(radius, move=0.0):
@@ -208,6 +209,8 @@ class TurtleBot:
         start_time = time.time()
         cnt = 0
         while (self.get_dist(x, y) < dist):
+            if rospy.is_shutdown():
+                return
             cnt += 1
             if cnt > self.RATE_HZ:
                 print("distance :", self.get_dist(x, y))
@@ -269,6 +272,8 @@ class TurtleBot:
         print("[%s] distance :" % self.name, get_angle_dist())
         cnt = 0
         while get_angle_dist() > self.ANGLE_TORLERANCE:
+            if rospy.is_shutdown():
+                return
             cnt += 1
             if cnt > self.RATE_HZ:
                 print("now(raw) : %f / speed : %f / Goal(raw) : %f / distance(acc) : %f" % \
@@ -318,6 +323,7 @@ class TurtleBot:
                 continue
             try:
                 nearest_dist, nearest_angle = min(self.last_front_data)
+                print(sorted(self.last_front_data)[:5])
                 if abs(nearest_angle) < ANGLE_TORLERANCE_DEGREES:
                     break
                 with self.condition:
@@ -325,7 +331,7 @@ class TurtleBot:
                 if nearest_angle > 180:
                     nearest_angle -= 360
                 self.rotate(angle=nearest_angle * pi / 180.0,
-                            speed=self.MAX_ANGULAR_SPEED / 10.0)
+                            speed=self.MAX_ANGULAR_SPEED / 15.0)
             except ValueError:  # no objects in front of the bot
                 self.stop()
                 return
