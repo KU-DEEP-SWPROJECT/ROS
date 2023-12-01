@@ -314,7 +314,7 @@ class TurtleBot:
                 continue
             try:
                 nearest_dist, nearest_angle = min(self.last_front_data)
-                if nearest_angle == 0:
+                if abs(nearest_angle) < 3:
                     break
                 with self.condition:
                     self.state = State.CARRY_ALIGN
