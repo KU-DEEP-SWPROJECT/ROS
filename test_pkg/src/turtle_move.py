@@ -335,6 +335,8 @@ class TurtleBot:
                         self.stop()
                 elif cmd == 'W':
                     time.sleep(float(arg))
+                elif cmd == 'B':
+                    self.move(dist=-1*dist)
                 else:
                     print("[%s] [Turtlebot#run] Error: Invalid command keyword: %s" % (self.name, cmd))
             except ValueError:
