@@ -266,8 +266,10 @@ class TurtleBot:
 
         start_time = time.time()
         
-        def get_angle_dist():
-            return abs(self.direction_acc - goal_direction_acc)
+        if angle < 0:
+            get_angle_dist = lambda: self.direction_acc - goal_direction_acc
+        else:
+            get_angle_dist = lambda: goal_direction_acc - self.direction_acc
 
         print("[%s] distance :" % self.name, get_angle_dist())
         cnt = 0
