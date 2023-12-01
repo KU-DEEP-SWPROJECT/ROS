@@ -171,10 +171,12 @@ class TurtleBot:
         if check_param_bit in {0b011, 0b110}:
             # only dist or move_time is given (011, 110) => use default speed
             speed = self.MAX_LINEAR_SPEED / 3
-        if check_param_bit & 0b100 == 1:
+        if check_param_bit & 0b100 == 100:
             # dist is not given, but move_time is given (100, 110) => calculate dist
             dist = speed * move_time
-        # 010, 001, 000 are OK as itself
+        elif check_param_bit & 0b001 == 0b001:
+            # calculate rotate_time
+            move_time = dist / speed
         print("move start")
         print("move input: "+str(dist))
         
@@ -230,10 +232,12 @@ class TurtleBot:
         if check_param_bit in {0b011, 0b110}:
             # only angle or rotate_time is given (011, 110) => use default speed
             speed = self.MAX_ANGULAR_SPEED / 4
-        if check_param_bit & 0b100 == 1:
+        if check_param_bit & 0b100 == 0b100:
             # angle is not given, but rotate_time is given (100, 110) => calculate angle
             angle = speed * rotate_time
-        # 010, 001, 000 are OK as itself
+        elif check_param_bit & 0b001 == 0b001:
+            # calculate rotate_time
+            rotate_time = angle / speed
         
         if rotate_time < 0:
             speed *= -1
@@ -273,7 +277,7 @@ class TurtleBot:
             self.twist_pub.publish(self.twist_msg)
             self.RATE.sleep()
         end_time = time.time()
-        print("[%s] end rotate | distance goal : %d " % (self.name, get_angle_dist()))
+        print("[%s] end rotate | distance goal : %d "% (self.name, get_angle_dist()))
         print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, end_time-start_time, speed))
         self.stop()
 
