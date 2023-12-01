@@ -456,7 +456,7 @@ class BotController:
         while not rospy.is_shutdown():
             for bot in active_bots:
                 bot.condition.acquire()
-                if (time.time() // 0.1) % 10 == 0.0:
+                if time.time() % 1 < 0.00005:
                     print("[carry_object] (%f) state check loop" % time.time())
             try:
                 for bot in active_bots:
