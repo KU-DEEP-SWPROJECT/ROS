@@ -453,13 +453,15 @@ class BotController:
                 active_bots.append(turtle_bot)
         for thread in threads:
             thread.start()
+        prev = time.time()
         while not rospy.is_shutdown():
             for bot in active_bots:
                 bot.condition.acquire()
-                if time.time() % 1 < 0.00005:
-                    print("[carry_object] (%f) state check loop" % time.time())
             try:
                 for bot in active_bots:
+                    if int(time.time()) - int(prev):
+                        prev = time.time()
+                        print("[carry_object] (%f) state check :" % time.time(), bot.name, '-', bot.state.name)
                     if bot.state != State.CARRY_READY_TO_STICK:
                         break
                 else:  # All bots are ready to stick
