@@ -169,25 +169,18 @@ class TurtleBot:
             # dist and move_time is not given (111, 101) => raise error
             raise ValueError("Lack of arguments.")
         if check_param_bit in {0b011, 0b110}:
-            # only dist or move_time is given (011, 110) => use max speed
+            # only dist or move_time is given (011, 110) => use default speed
             speed = self.MAX_LINEAR_SPEED / 3
-        if check_param_bit & 0b100 == 0:
-            if check_param_bit & 0b001:
-                # dist is given, speed is given or MAX_LINEAR_SPEED (001, 011) => calculate time
-                move_time = dist / speed
-            elif check_param_bit == 0b010:
-                # dist and move_time is given and speed is not given (010) => calculate speed
-                speed = dist / move_time
-        # 100, 000 are OK as itself
+        if check_param_bit & 0b100 == 1:
+            # dist is not given, but move_time is given (100, 110) => calculate dist
+            dist = speed * move_time
+        # 010, 001, 000 are OK as itself
         print("move start")
         print("move input: "+str(dist))
         
         twist = self.twist_msg
         twist.linear.x = speed
 
-        if move_time < 0:
-            twist.linear.x *= -1
-            move_time *= -1
         if dist < 0:
             twist.linear.x *= -1
             dist *= -1
@@ -235,16 +228,12 @@ class TurtleBot:
             # angle and rotate_time is not given (111, 101) => raise error
             raise ValueError("Lack of arguments.")
         if check_param_bit in {0b011, 0b110}:
-            # only angle or rotate_time is given (011, 110) => use max speed
+            # only angle or rotate_time is given (011, 110) => use default speed
             speed = self.MAX_ANGULAR_SPEED / 4
-        if check_param_bit & 0b100 == 0:
-            if check_param_bit & 0b001:
-                # angle is given, speed is given or MAX_LINEAR_SPEED (001, 011) => calculate time
-                rotate_time = angle / speed
-            elif check_param_bit == 0b010:
-                # angle and rotate_time is given and speed is not given (010) => calculate speed
-                speed = angle / rotate_time
-        # 100, 000 are OK as itself
+        if check_param_bit & 0b100 == 1:
+            # angle is not given, but rotate_time is given (100, 110) => calculate angle
+            angle = speed * rotate_time
+        # 010, 001, 000 are OK as itself
         
         if rotate_time < 0:
             speed *= -1
