@@ -17,6 +17,7 @@ from collections import deque
 #from math import *
 import math
 from math import pow, atan2, asin, sqrt, pi
+#from Gunwoo import *
 
 from incident_detect import IncidentDetector
 from typing import List
@@ -577,6 +578,11 @@ if __name__=="__main__":
             bots.append(TurtleBot())
         
         controller = BotController(bots)
+        
+        #map_file = []
+        #map_file = get_points(0)        
+        #print(map_file)
+
         print("터틀봇에게 전송할 명령을 입력하세요.")
         print("- 입력된 명령들을 실행하려면 `run`을 입력하세요.")
         print("- 물건 운반 작업을 진행하려면 `carry`를 입력하세요.")
