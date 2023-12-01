@@ -86,7 +86,7 @@ class TurtleBot:
         self.incident_detector.callback = self.incident_callback
         
         self.last_front_data = None  # for carrying task
-        rospy.on_shutdown(self.stop)
+        rospy.on_shutdown(lambda: self.twist_pub.publish(Twist()))
     
     @staticmethod
     def __range_predict(radius, move=0.0):
@@ -330,7 +330,7 @@ class TurtleBot:
                     self.state = State.CARRY_ALIGN
                 if nearest_angle > 180:
                     nearest_angle -= 360
-                self.rotate(angle=nearest_angle * pi / 180.0,
+                self.rotate(angle=-nearest_angle * pi / 180.0,
                             speed=self.MAX_ANGULAR_SPEED / 15.0)
             except ValueError:  # no objects in front of the bot
                 self.stop()
