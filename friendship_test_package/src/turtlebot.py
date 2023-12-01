@@ -341,6 +341,7 @@ class TurtleBot:
             
         with self.condition:
             self.state = State.CARRY_READY_TO_STICK
+            print("[%s] Waiting the controller to change my state..." % self.name)
             self.condition.wait_for(lambda: self.state == State.CARRY_STICK)
         # In controller, it should check all bots are ready to stick, and set all states to starting sticking
         # so all bots stick to the object simultaniously.
@@ -452,9 +453,11 @@ class BotController:
                 active_bots.append(turtle_bot)
         for thread in threads:
             thread.start()
-        while True:
+        while not rospy.is_shutdown():
             for bot in active_bots:
                 bot.condition.acquire()
+                if (time.time() // 0.1) % 10 == 0.0:
+                    print("[carry_object] (%f) state check loop" % time.time())
             try:
                 for bot in active_bots:
                     if bot.state != State.CARRY_READY_TO_STICK:
