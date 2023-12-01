@@ -270,7 +270,7 @@ class TurtleBot:
         cnt = 0
         while get_angle_dist() > self.ANGLE_TORLERANCE:
             cnt += 1
-            if cnt > 50:
+            if cnt > self.RATE_HZ:
                 print("now(raw) : %f / speed : %f / Goal(raw) : %f / distance(acc) : %f" % \
                     (self.direction_raw, self.twist_msg.angular.z , goal_direction_acc, get_angle_dist()))
                 cnt = 0
@@ -309,12 +309,16 @@ class TurtleBot:
             self.state = State.CARRY_WAIT
             self.condition.notify()
         
+        ANGLE_TORLERANCE_DEGREES = self.ANGLE_TORLERANCE * 180 / pi
+        
         while True:
+            if rospy.is_shutdown():
+                return
             if self.last_front_data is None:
                 continue
             try:
                 nearest_dist, nearest_angle = min(self.last_front_data)
-                if abs(nearest_angle) < 3:
+                if abs(nearest_angle) < ANGLE_TORLERANCE_DEGREES:
                     break
                 with self.condition:
                     self.state = State.CARRY_ALIGN
@@ -348,7 +352,7 @@ class TurtleBot:
         self.queue = deque(command_string.split('/'))
 
     def run(self):
-        while self.queue:
+        while self.queue and not rospy.is_shutdown():
             q = self.queue.popleft()
             cmd, arg = q[0], q[1:]
             try:
