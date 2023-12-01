@@ -341,8 +341,12 @@ class TurtleBot:
             
         with self.condition:
             self.state = State.CARRY_READY_TO_STICK
+            self.condition.notify()
+        
+        with self.condition:
             print("[%s] Waiting the controller to change my state..." % self.name)
             self.condition.wait_for(lambda: self.state == State.CARRY_STICK)
+            self.condition.notify()
         # In controller, it should check all bots are ready to stick, and set all states to starting sticking
         # so all bots stick to the object simultaniously.
         
