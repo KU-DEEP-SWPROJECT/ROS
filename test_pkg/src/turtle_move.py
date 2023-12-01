@@ -585,6 +585,7 @@ if __name__=="__main__":
             temp_cmd = input("turtlebot> ")
             if temp_cmd.lower() == "run":
                 controller.execute_all_commands()
+                controller.run_all_turtlebots()
                 print("[@] Running commands finished.")
             elif temp_cmd.lower() == "carry":
                 controller.carry_object()
