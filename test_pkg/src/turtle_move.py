@@ -19,6 +19,7 @@ import math
 from math import pow, atan2, asin, sqrt, pi
 
 from incident_detect import IncidentDetector
+from typing import List
 
 
 if sys.platform == 'win32':
@@ -385,8 +386,6 @@ class TurtleBot:
                     time.sleep(float(arg))
                 elif cmd == 'B':
                     self.move(dist=-1*dist)
-                elif cmd == 'C':
-                    self.carry()
                 else:
                     print("[%s] [Turtlebot#run] Error: Invalid command keyword: %s" % (self.name, cmd))
             except ValueError:
@@ -508,7 +507,7 @@ class TurtleBot:
         return roll_x, pitch_y, yaw_z # in radians
 
 class BotController:
-    def __init__(self, array_of_bot):
+    def __init__(self, array_of_bot: List[TurtleBot]):
         self.bots = array_of_bot
         self.command_array = []
         pass
@@ -540,6 +539,34 @@ class BotController:
             thread.start()
         for thread in threads:
             thread.join()
+    
+    def carry_object(self):
+        # Bots should be at the points after executing commands from the algorithm.
+        threads = []
+        for turtle_bot in self.bots:
+            if turtle_bot is not None:
+                threads.append(threading.Thread(target=turtle_bot.carry))
+        for thread in threads:
+            thread.start()
+        while True:
+            for bot in self.bots:
+                bot.condition.acquire()
+            try:
+                for bot in self.bots:
+                    if bot.state != State.CARRY_READY_TO_STICK:
+                        break
+                else:  # All bots are ready to stick
+                    for bot in self.bots:
+                        bot.state = State.CARRY_STICK
+                    break
+            except:
+                raise
+            finally:
+                for bot in self.bots:
+                    bot.condition.notify()
+                    bot.condition.release()
+        for thread in threads:
+            thread.join()
 
 if __name__=="__main__":
     try:
@@ -551,14 +578,21 @@ if __name__=="__main__":
         
         controller = BotController(bots)
         print("터틀봇에게 전송할 명령을 입력하세요.")
-        print("(그만 입력하려면 아무것도 입력하지 않고 Enter를 누르세요.)")
+        print("- 입력된 명령들을 실행하려면 `run`을 입력하세요.")
+        print("- 물건 운반 작업을 진행하려면 `carry`를 입력하세요.")
+        print("- 프로그램을 종료하려면 아무것도 입력하지 않고 Enter를 누르세요.")
         while True:
             temp_cmd = input("turtlebot> ")
-            if not temp_cmd:
+            if temp_cmd.lower() == "run":
+                controller.execute_all_commands()
+                print("[@] Running commands finished.")
+            elif temp_cmd.lower() == "carry":
+                controller.carry_object()
+                print("[@] Carrying task finished.")
+            elif not temp_cmd:
                 break
-            controller.push_command(temp_cmd)
-        controller.execute_all_commands()
-        controller.run_all_turtlebots()
-        print("All executions finished.")
+            else:
+                controller.push_command(temp_cmd)
+        print("[@] Program exits.")
     except KeyboardInterrupt:
         rospy.signal_shutdown()
