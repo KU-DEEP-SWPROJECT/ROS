@@ -275,7 +275,7 @@ class TurtleBot:
             if rospy.is_shutdown():
                 return
             cnt += 1
-            if cnt > self.RATE_HZ:
+            if cnt > self.RATE_HZ / 10:
                 print("now(raw) : %f / speed : %f / Goal(raw) : %f / distance(acc) : %f" % \
                     (self.direction_raw, self.twist_msg.angular.z , goal_direction_acc, get_angle_dist()))
                 cnt = 0
@@ -330,7 +330,7 @@ class TurtleBot:
                     self.state = State.CARRY_ALIGN
                 if nearest_angle > 180:
                     nearest_angle -= 360
-                self.rotate(angle=-nearest_angle * pi / 180.0,
+                self.rotate(angle=nearest_angle * pi / 180.0,
                             speed=self.MAX_ANGULAR_SPEED / 15.0)
             except ValueError:  # no objects in front of the bot
                 self.stop()
