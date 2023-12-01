@@ -53,7 +53,7 @@ class TurtleBot:
     BASE_STOP_TIME = 1.0
     BOT_NAME_PREFIX = "turtle_"
 
-    ANGLE_TORLERANCE = 0.1
+    ANGLE_TORLERANCE = 0.05
     
     # limitations of turtlebot3 burger model
     # MAX_LINEAR_SPEED  = 0.22  # m/s
@@ -78,15 +78,6 @@ class TurtleBot:
         self.pos = [0.0, 0.0]  # x, y
         self.direction_raw = 0.0  # as radians (   0 ~ 2*pi)
         self.direction_acc = 0.0  # as radians (-inf ~ +inf; accumulation)
-
-        # Turtlebot3 pose #
-        self.pos_x_2d = 0.0
-        self.pos_y_2d = 0.0
-        self.theta_2d = 0.0
-        self.pure_theta = 0.0
-        ###################
-        self.prev_theta_2d = 0.0
-        self.theta_2d_sum  = 0.0
 
         self.state = State.PARKING
         self.got_incident = False
@@ -116,7 +107,7 @@ class TurtleBot:
         angles = list(filter(lambda x: 0.01 < data.ranges[x] < limitation[x], range(360)))
         fronts = list(filter(lambda angle: angle < 30 or angle > 330, angles))
         backs = list(filter(lambda angle: 150 < angle < 210, angles))
-        self.last_front_data = [(data.ranges[x], x) for x in range(-30, 30)]
+        self.last_front_data = [(data.ranges[x], x) for x in range(-30, 30) if data.ranges[x] > 0.01]
         with self.condition:
             if self.state == State.PARKING:
                 pass
@@ -326,15 +317,21 @@ class TurtleBot:
             self.condition.notify()
         
         while True:
-            nearest_dist, nearest_angle = min(self.last_front_data)
-            if nearest_angle == 0:
-                break
-            with self.condition:
-                self.state = State.CARRY_ALIGN
-            if nearest_angle > 180:
-                nearest_angle -= 360
-            self.rotate(angle=nearest_angle * pi / 180.0,
-                        speed=self.MAX_ANGULAR_SPEED / 10.0)
+            try:
+                nearest_dist, nearest_angle = min(self.last_front_data)
+                if nearest_angle == 0:
+                    break
+                with self.condition:
+                    self.state = State.CARRY_ALIGN
+                if nearest_angle > 180:
+                    nearest_angle -= 360
+                self.rotate(angle=nearest_angle * pi / 180.0,
+                            speed=self.MAX_ANGULAR_SPEED / 10.0)
+            except TypeError:  # not scanned yet
+                continue
+            except ValueError:  # no objects in front of the bot
+                self.stop()
+                return
             
         with self.condition:
             self.state = State.CARRY_READY_TO_STICK
@@ -380,13 +377,6 @@ class TurtleBot:
                     print("[%s] [Turtlebot#run] Error: Invalid command keyword: %s" % (self.name, cmd))
             except ValueError:
                 print("[%s] [Turtlebot#run] Error: Invaild argument type: %s (%s)" % (self.name, arg, type(arg).__name__))
-        # Turtlebot3 pose #
-        self.pos_x_2d = 0.0
-        self.pos_y_2d = 0.0
-        self.theta_2d = 0.0
-        ###################
-        self.prev_theta_2d = 0.0
-        self.theta_2d_sum  = 0.0
            
     def get_odom(self, msg: Odometry):
         *self.pos, theta = self.get_pose(msg)
