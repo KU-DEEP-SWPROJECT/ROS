@@ -71,7 +71,7 @@ class TurtleBot:
             TurtleBot.__ID += 1
         else:
             self.name = self.BOT_NAME_PREFIX + robot_name
-        self.twist_pub = rospy.Publisher('/'+self.name+'/cmd_vel', Twist, queue_size = 20)
+        self.twist_pub = rospy.Publisher('/'+self.name+'/cmd_vel', Twist, queue_size = self.RATE_HZ)
         self.twist_msg = Twist()
         self.odom_sub = rospy.Subscriber('/'+self.name+'/odom', Odometry, self.get_odom)
         
@@ -322,6 +322,7 @@ class TurtleBot:
             if rospy.is_shutdown():
                 return
             if self.last_front_data is None:
+                self.RATE.sleep()
                 continue
             try:
                 nearest_dist, nearest_angle = min(self.last_front_data)
@@ -337,7 +338,6 @@ class TurtleBot:
             except ValueError:  # no objects in front of the bot
                 self.stop()
                 return
-            self.RATE.sleep()
             
         with self.condition:
             self.state = State.CARRY_READY_TO_STICK
