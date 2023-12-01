@@ -1,0 +1,505 @@
+#!/usr/bin/env python3
+# -*- encoding: utf-8 -*-
+
+import sys
+# print(sys.version)
+
+# import roslib; roslib.load_manifest('teleop_twist_keyboard')
+import rospy
+import time
+from enum import Enum, auto
+from threading import Thread, Condition
+from turtlesim.msg import Pose
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import LaserScan
+from collections import deque
+from math import pow, sin, cos, atan2, asin, sqrt, pi
+from typing import List
+
+from incident_detect import IncidentDetector
+
+
+if sys.platform == 'win32':
+    import msvcrt
+else:
+    import termios
+    import tty
+
+
+TWO_PI = pi + pi
+
+
+class State(Enum):
+    PARKING = auto()
+    FORWARD = auto()
+    BACKWARD = auto()
+    ROTATE = auto()
+    FOLLOW = auto()
+    WAIT_ROTATE = auto()
+    CARRY_WAIT = auto()
+    CARRY_ALIGN = auto()
+    CARRY_READY_TO_STICK = auto()
+    CARRY_STICK = auto()
+    CARRY_STANDBY = auto()
+    CARRYING_MOVE_FORWARD = auto()
+    CARRYING_MOVE_BACKWARD = auto()
+
+
+# 회전: 양수 = 반시계방향
+class TurtleBot:
+    __ID = 1
+    RATE_HZ = 100
+    BASE_STOP_TIME = 1.0
+    BOT_NAME_PREFIX = "turtle_"
+
+    ANGLE_TORLERANCE = 0.1
+    
+    # limitations of turtlebot3 burger model
+    # MAX_LINEAR_SPEED  = 0.22  # m/s
+    # MAX_ANGULAR_SPEED = 2.84  # rad/s
+    
+    # let's limit them slightly slower
+    MAX_LINEAR_SPEED  = 0.2  # m/s
+    MAX_ANGULAR_SPEED = 2.8  # rad/s
+    
+    def __init__(self, robot_name=None):
+        self.queue = deque([])
+        self.RATE = rospy.Rate(self.RATE_HZ)
+        if robot_name is None:
+            self.name = self.BOT_NAME_PREFIX + str(TurtleBot.__ID)
+            TurtleBot.__ID += 1
+        else:
+            self.name = self.BOT_NAME_PREFIX + robot_name
+        self.twist_pub = rospy.Publisher('/'+self.name+'/cmd_vel', Twist, queue_size = 20)
+        self.twist_msg = Twist()
+        self.odom_sub = rospy.Subscriber('/'+self.name+'/odom', Odometry, self.get_odom)
+        
+        self.pos = [0.0, 0.0]  # x, y
+        self.direction_raw = 0.0  # as radians (   0 ~ 2*pi)
+        self.direction_acc = 0.0  # as radians (-inf ~ +inf; accumulation)
+
+        # Turtlebot3 pose #
+        self.pos_x_2d = 0.0
+        self.pos_y_2d = 0.0
+        self.theta_2d = 0.0
+        self.pure_theta = 0.0
+        ###################
+        self.prev_theta_2d = 0.0
+        self.theta_2d_sum  = 0.0
+
+        self.state = State.PARKING
+        self.got_incident = False
+        self.condition = Condition()
+        self.incident_detector = IncidentDetector(self.name)
+        self.incident_detector.callback = self.incident_callback
+        
+        self.last_front_data = None  # for carrying task
+    
+    @staticmethod
+    def __range_predict(radius, move=0.0):
+        result_dist = [0.0 for _ in range(360)]
+        sin_sq = [sin(i * pi / 180) ** 2 for i in range(-90, 90)]
+        cos_sq = [cos(i * pi / 180) ** 2 for i in range(-90, 90)]
+        r_sq = radius * radius
+        d_sq = move * move
+        for angle in range(-90, 90):
+            angle_idx = angle + 90
+            _x, _D = move * sin_sq[angle_idx], sqrt(d_sq * sin_sq[angle_idx] * cos_sq[angle_idx] + r_sq * cos_sq[angle_idx])
+            x1, x2 = _x + _D, _x - _D
+            result_dist[angle+180] = sqrt((x1 - move)**2 + r_sq - x1**2)
+            result_dist[angle%360] = sqrt((x2 - move)**2 + r_sq - x2**2)
+        return result_dist
+    
+    def incident_callback(self, data: LaserScan):
+        limitation = self.__range_predict(self.incident_detector.INCIDENT_DISTANCE, self.twist_msg.linear.x / 5)  # Scan data is published for 5 Hz.
+        angles = list(filter(lambda x: 0.01 < data.ranges[x] < limitation[x], range(360)))
+        fronts = list(filter(lambda angle: angle < 30 or angle > 330, angles))
+        backs = list(filter(lambda angle: 150 < angle < 210, angles))
+        self.last_front_data = [(data.ranges[x], x) for x in range(-30, 30)]
+        with self.condition:
+            if self.state == State.PARKING:
+                pass
+            elif self.state == State.FORWARD:
+                if fronts and not self.got_incident:
+                    self.got_incident = True  # STOP
+                elif not fronts:
+                    self.got_incident = False
+            elif self.state == State.BACKWARD:
+                if backs and not self.got_incident:
+                    self.got_incident = True  # STOP
+                elif not backs:
+                    self.got_incident = False
+            elif self.state == State.ROTATE:
+                pass
+            elif self.state == State.FOLLOW:
+                if fronts and not self.got_incident:
+                    self.got_incident = True  # STOP
+                elif not fronts:
+                    self.got_incident = False
+            elif self.state == State.WAIT_ROTATE:
+                if fronts and not self.got_incident:
+                    self.got_incident = True  # STOP
+                elif not fronts:
+                    self.got_incident = False
+            elif self.state == State.CARRY_WAIT:
+                pass
+            elif self.state == State.CARRY_ALIGN:
+                pass
+            elif self.state == State.CARRY_STICK:
+                pass
+            elif self.state == State.CARRY_STANDBY:
+                pass
+            elif self.state == State.CARRYING_MOVE_FORWARD:
+                pass
+            elif self.state == State.CARRYING_MOVE_BACKWARD:
+                if backs and not self.got_incident:
+                    self.got_incident = True  # STOP
+            self.condition.notify()
+    
+    def check_incident(self):
+        st = time.time()
+        with self.condition:
+            if self.got_incident:
+                while not rospy.is_shutdown():
+                    rospy.loginfo("[%s] Incident detected! Wait for removed...", self.name)
+                    self.twist_pub.publish(Twist())
+                    self.condition.wait_for(lambda: not self.got_incident, timeout=3.0)
+                    if not self.got_incident:
+                        rospy.loginfo("[%s] Incident has removed. Continuing the task...", self.name)
+                        break
+            self.condition.notify()
+        return time.time() - st
+
+    def move(self, dist=None, speed=None, move_time=None):
+        # (speed, move_time) has higher priority
+        check_param_bit = (dist is None) << 2 | (speed is None) << 1 | (move_time is None)
+        if check_param_bit | 0b010 == 0b111:
+            # dist and move_time is not given (111, 101) => raise error
+            raise ValueError("Lack of arguments.")
+        if check_param_bit in {0b011, 0b110}:
+            # only dist or move_time is given (011, 110) => use max speed
+            speed = self.MAX_LINEAR_SPEED / 3
+        if check_param_bit & 0b100 == 0:
+            if check_param_bit & 0b001:
+                # dist is given, speed is given or MAX_LINEAR_SPEED (001, 011) => calculate time
+                move_time = dist / speed
+            elif check_param_bit == 0b010:
+                # dist and move_time is given and speed is not given (010) => calculate speed
+                speed = dist / move_time
+        # 100, 000 are OK as itself
+        print("move start")
+        print("move input: "+str(dist))
+        
+        twist = self.twist_msg
+        twist.linear.x = speed
+
+        if move_time < 0:
+            twist.linear.x *= -1
+            move_time *= -1
+        if dist < 0:
+            twist.linear.x *= -1
+            dist *= -1
+        
+        with self.condition:
+            if self.state == State.CARRY_STANDBY:
+                if speed < 0:
+                    self.state = State.CARRYING_MOVE_BACKWARD
+                else:
+                    self.state = State.CARRYING_MOVE_FORWARD
+            elif self.state.name.startswith('CARRY_'):
+                pass
+            else:
+                if speed < 0:
+                    self.state = State.BACKWARD
+                else:
+                    self.state = State.FORWARD
+            self.condition.notify()
+
+        x, y = self.pos
+        print("[%s] pose now :" % self.name, self.pos)
+        print("[%s] dist now :" % self.name, dist)
+        start_time = time.time()
+        cnt = 0
+        while (self.get_dist(x, y) < dist):
+            cnt += 1
+            if cnt > self.RATE_HZ:
+                print("distance :", self.get_dist(x, y))
+                print("pose now :", x, y)   
+                cnt = 0
+            self.twist_pub.publish(self.twist_msg)
+            start_time += self.check_incident()
+            self.RATE.sleep()
+        print("[%s] end move | distance goal : %d " % (self.name, self.get_dist(x, y) ))
+        #print("end distance : ",(self.get_dist(x, y)))
+        end_time = time.time()
+        print("[%s] move time: %.3f / speed: %.3f" % (self.name, end_time-start_time, speed))
+        #print("pose now :", x, y)   
+        self.stop()
+
+    def rotate(self, angle=None, speed=None, rotate_time=None):
+        # (speed, rotate_time) has higher priority
+        check_param_bit = (angle is None) << 2 | (speed is None) << 1 | (rotate_time is None)
+        if check_param_bit | 0b010 == 0b111:
+            # angle and rotate_time is not given (111, 101) => raise error
+            raise ValueError("Lack of arguments.")
+        if check_param_bit in {0b011, 0b110}:
+            # only angle or rotate_time is given (011, 110) => use max speed
+            speed = self.MAX_ANGULAR_SPEED / 4
+        if check_param_bit & 0b100 == 0:
+            if check_param_bit & 0b001:
+                # angle is given, speed is given or MAX_LINEAR_SPEED (001, 011) => calculate time
+                rotate_time = angle / speed
+            elif check_param_bit == 0b010:
+                # angle and rotate_time is given and speed is not given (010) => calculate speed
+                speed = angle / rotate_time
+        # 100, 000 are OK as itself
+        
+        if rotate_time < 0:
+            speed *= -1
+            rotate_time *= -1
+
+        angle %= TWO_PI
+        if angle > pi:
+            angle -= TWO_PI
+        goal_direction_acc = self.direction_acc + angle
+        
+        print("[%s] angle now : %f (%f)" % (self.name, self.direction_acc, self.direction_raw))
+        print("[%s] goal angle : %f (%f)" % (self.name, goal_direction_acc, goal_direction_acc % TWO_PI))
+        print("[%s] angle torlerance : %f" % (self.name, self.ANGLE_TORLERANCE))
+            
+        twist = self.twist_msg
+        twist.angular.z = speed
+        #print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, rotate_time, angle_speed))
+        
+        with self.condition:
+            if not self.state.name.startswith('CARRY_'):
+                self.state = State.ROTATE
+            self.condition.notify()
+
+        start_time = time.time()
+        
+        def get_angle_dist():
+            return abs(self.direction_acc - goal_direction_acc)
+
+        print("[%s] distance :" % self.name, get_angle_dist())
+        cnt = 0
+        while get_angle_dist() > self.ANGLE_TORLERANCE:
+            cnt += 1
+            if cnt > 50:
+                print("now(raw) : %f / speed : %f / Goal(raw) : %f / distance(acc) : %f" % \
+                    (self.direction_raw, self.twist_msg.angular.z , goal_direction_acc, get_angle_dist()))
+                cnt = 0
+            self.twist_pub.publish(self.twist_msg)
+            self.RATE.sleep()
+        end_time = time.time()
+        print("[%s] end rotate | distance goal : %d " % (self.name, get_angle_dist()))
+        print("[%s] rotate time: %.3f / speed: %.3f" % (self.name, end_time-start_time, speed))
+        self.stop()
+
+    def stop(self, stop_time=None):
+        if stop_time is None:
+            stop_time = self.BASE_STOP_TIME
+        start_time = time.time()
+        
+        twist = self.twist_msg
+        twist.linear.x = 0
+        twist.angular.z = 0
+        
+        with self.condition:
+            if self.state == State.CARRY_STICK:
+                self.state = State.CARRY_STANDBY
+            elif self.state.name.startswith('CARRY_'):
+                pass
+            else:
+                self.state = State.PARKING
+            self.condition.notify()
+
+        print("[%s] stop time: %.3f" % (self.name, stop_time))
+        while (time.time() - start_time <= stop_time):
+            self.twist_pub.publish(self.twist_msg)
+            self.RATE.sleep()
+    
+    def carry(self, target_dist=0):
+        with self.condition:
+            self.state = State.CARRY_WAIT
+            self.condition.notify()
+        
+        while True:
+            nearest_dist, nearest_angle = min(self.last_front_data)
+            if nearest_angle == 0:
+                break
+            with self.condition:
+                self.state = State.CARRY_ALIGN
+            if nearest_angle > 180:
+                nearest_angle -= 360
+            self.rotate(angle=nearest_angle * pi / 180.0,
+                        speed=self.MAX_ANGULAR_SPEED / 10.0)
+            
+        with self.condition:
+            self.state = State.CARRY_READY_TO_STICK
+            self.condition.wait_for(lambda: self.state == State.CARRY_STICK)
+        # In controller, it should check all bots are ready to stick, and set all states to starting sticking
+        # so all bots stick to the object simultaniously.
+        
+        self.move(dist=nearest_dist - target_dist + 0.05)
+        # make the wheels over-spin (5cm further) to make sure the bot is combined to frame.
+        self.stop()
+
+    def push_command(self, cmd):
+        self.queue.append(cmd)
+    
+    def push_commands(self, command_string):
+        for command in command_string.split('/'):
+            self.push_command(command)
+
+    def set_queue(self, command_string):
+        self.queue = deque(command_string.split('/'))
+
+    def run(self):
+        while self.queue:
+            q = self.queue.popleft()
+            cmd, arg = q[0], q[1:]
+            try:
+                if cmd == 'F':
+                    dist = float(arg)
+                    self.move(dist=dist)
+                elif cmd == 'R':
+                    angle = float(arg)
+                    self.rotate(angle=angle)
+                elif cmd == 'S':
+                    if arg:
+                        self.stop(float(arg))
+                    else:
+                        self.stop()
+                elif cmd == 'W':
+                    time.sleep(float(arg))
+                elif cmd == 'B':
+                    self.move(dist=-1*dist)
+                else:
+                    print("[%s] [Turtlebot#run] Error: Invalid command keyword: %s" % (self.name, cmd))
+            except ValueError:
+                print("[%s] [Turtlebot#run] Error: Invaild argument type: %s (%s)" % (self.name, arg, type(arg).__name__))
+        # Turtlebot3 pose #
+        self.pos_x_2d = 0.0
+        self.pos_y_2d = 0.0
+        self.theta_2d = 0.0
+        ###################
+        self.prev_theta_2d = 0.0
+        self.theta_2d_sum  = 0.0
+           
+    def get_odom(self, msg: Odometry):
+        *self.pos, theta = self.get_pose(msg)
+        d_theta = theta - self.direction_raw
+        if d_theta > 5:  # clockwise, passing 0-360 border (ex: 20 deg -> 340 deg)
+            d_theta -= TWO_PI
+        elif d_theta < -5:  # counterclockwise, passing 0-360 border (ex: 340 deg -> 20 deg)
+            d_theta += TWO_PI
+        self.direction_raw = theta
+        self.direction_acc += d_theta
+            
+    def get_pose(self, data: Odometry):
+        qx, qy, qz, qw = map(data.pose.pose.orientation.__getattribute__, 'xyzw')
+        _y = qw * qz + qx * qy
+        _x = qy * qy + qz * qz
+        theta = atan2(_y+_y, 1-_x-_x)
+        if theta < 0:
+            theta += TWO_PI
+        return data.pose.pose.position.x, data.pose.pose.position.y, theta
+        
+    def get_dist(self, x, y):
+        dx = x - self.pos[0]
+        dy = y - self.pos[1]
+        return sqrt(dx*dx + dy*dy)
+
+class BotController:
+    def __init__(self, array_of_bot: List[TurtleBot]):
+        self.bots = array_of_bot
+        self.command_array = []
+        pass
+    
+    def push_command(self, command: str):
+        self.command_array.append(command)
+        
+    def execute_command(self):
+        num, _, cmd = self.command_array.pop().rpartition(':')
+        try:
+            num = int(num)
+        except ValueError:
+            print("[BotController#execute_cmd] Error: Bot number is not an integer type: %s (%s)" % (num, type(num).__name__))
+        if num < 1 or num >= len(self.bots):
+            print("[BotController#execute_cmd] Error: Bot number (%d) is out of range." % num)
+            return
+        self.bots[num].set_queue(cmd)
+        
+    def execute_all_commands(self):
+        while self.command_array:
+            self.execute_command()
+            
+    def run_all_turtlebots(self):
+        threads = []
+        for turtle_bot in self.bots:
+            if turtle_bot is not None:
+                threads.append(Thread(target=turtle_bot.run))
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+    
+    def carry_object(self):
+        # Bots should be at the points after executing commands from the algorithm.
+        threads = []
+        for turtle_bot in self.bots:
+            if turtle_bot is not None:
+                threads.append(Thread(target=turtle_bot.carry))
+        for thread in threads:
+            thread.start()
+        while True:
+            for bot in self.bots:
+                bot.condition.acquire()
+            try:
+                for bot in self.bots:
+                    if bot.state != State.CARRY_READY_TO_STICK:
+                        break
+                else:  # All bots are ready to stick
+                    for bot in self.bots:
+                        bot.state = State.CARRY_STICK
+                    break
+            except:
+                raise
+            finally:
+                for bot in self.bots:
+                    bot.condition.notify()
+                    bot.condition.release()
+        for thread in threads:
+            thread.join()
+
+if __name__=="__main__":
+    try:
+        rospy.init_node('teleop_twist_keyboard')
+        BOT_COUNT = int(input("터틀봇 운영 대수: "))
+        bots = [None]
+        for i in range(BOT_COUNT):
+            bots.append(TurtleBot())
+        
+        controller = BotController(bots)
+        print("터틀봇에게 전송할 명령을 입력하세요.")
+        print("- 입력된 명령들을 실행하려면 `run`을 입력하세요.")
+        print("- 물건 운반 작업을 진행하려면 `carry`를 입력하세요.")
+        print("- 프로그램을 종료하려면 아무것도 입력하지 않고 Enter를 누르세요.")
+        while True:
+            temp_cmd = input("turtlebot> ")
+            if temp_cmd.lower() == "run":
+                controller.execute_all_commands()
+                controller.run_all_turtlebots()
+                print("[@] Running commands finished.")
+            elif temp_cmd.lower() == "carry":
+                controller.carry_object()
+                print("[@] Carrying task finished.")
+            elif not temp_cmd:
+                break
+            else:
+                controller.push_command(temp_cmd)
+        print("[@] Program exits.")
+    except KeyboardInterrupt:
+        rospy.signal_shutdown()

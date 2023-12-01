@@ -15,10 +15,10 @@ class IncidentDetector:
         self.callback = self.base_callback
         rospy.Subscriber(scan_prefix + "/scan", LaserScan, self._callback)
     
-    def _callback(self, arg):
+    def _callback(self, arg: LaserScan):
         self.callback(arg)
     
-    def base_callback(self, arg):
+    def base_callback(self, arg: LaserScan):
         return list(filter(lambda x: 0.01 < arg.ranges[x] < self.INCIDENT_DISTANCE, range(360)))
 
 
