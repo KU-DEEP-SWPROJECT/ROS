@@ -20,8 +20,8 @@ MAP = [[*map(int,jim_array.split())] for _ in range(n)]
 
 # set robot data
 robots = []
-for i in range(len(bot_array)):
-    robot.append(Robot((bot_pos_array[i],BOT_DIR,BOT_LINENAR_TIME,BOT_ROTATE_TIME,BOT_STOP_TIME,get_goal_pos(bot_pos_array,jim_array,i))))
+for i in range(len(bot_pos_array)):
+    robots.append(Robot((bot_pos_array[i],BOT_DIR,BOT_LINENAR_TIME,BOT_ROTATE_TIME,BOT_STOP_TIME,get_goal_pos(bot_pos_array,jim_array,i))))
 
 # set Astar
 astar = TimeAstar(size=n, robots=robots, MAP = MAP)
