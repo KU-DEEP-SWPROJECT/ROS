@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.6
 # -*- encoding: utf-8 -*-
 
 import sys
@@ -28,6 +28,8 @@ else:
 
 
 TWO_PI = pi + pi
+DEG_TO_RAD = pi / 180
+RAD_TO_DEG = 180 / pi
 
 
 class State(Enum):
@@ -49,19 +51,22 @@ class State(Enum):
 # 회전: 양수 = 반시계방향
 class TurtleBot:
     __ID = 1
-    RATE_HZ = 100
+    RATE_HZ = 50
     BASE_STOP_TIME = 1.0
     BOT_NAME_PREFIX = "turtle_"
 
-    ANGLE_TORLERANCE = 0.1
+    ANGLE_TORLERANCE = 0.003
+    ROTATE_SLOWDOWN_BOUNDARY = 0.75
     
     # limitations of turtlebot3 burger model
     # MAX_LINEAR_SPEED  = 0.22  # m/s
     # MAX_ANGULAR_SPEED = 2.84  # rad/s
     
     # let's limit them slightly slower
-    MAX_LINEAR_SPEED  = 0.2  # m/s
-    MAX_ANGULAR_SPEED = 2.8  # rad/s
+    DEFAULT_LINEAR_SPEED  = 0.1  # m/s
+    DEFAULT_ANGLUAR_SPEED = 0.75  # rad/s
+    ANGLUAR_SLOWDOWN_STEP = 0.01
+    MIN_ANGULAR_SPEED = 0.05
     
     def __init__(self, robot_name=None):
         self.queue = deque([])
@@ -91,8 +96,8 @@ class TurtleBot:
     @staticmethod
     def __range_predict(radius, move=0.0):
         result_dist = [0.0 for _ in range(360)]
-        sin_sq = [sin(i * pi / 180) ** 2 for i in range(-90, 90)]
-        cos_sq = [cos(i * pi / 180) ** 2 for i in range(-90, 90)]
+        sin_sq = [sin(i * DEG_TO_RAD) ** 2 for i in range(-90, 90)]
+        cos_sq = [cos(i * DEG_TO_RAD) ** 2 for i in range(-90, 90)]
         r_sq = radius * radius
         d_sq = move * move
         for angle in range(-90, 90):
@@ -164,7 +169,7 @@ class TurtleBot:
             raise ValueError("Lack of arguments.")
         if check_param_bit in {0b011, 0b110}:
             # only dist or move_time is given (011, 110) => use default speed
-            speed = self.MAX_LINEAR_SPEED / 3
+            speed = self.DEFAULT_LINEAR_SPEED
         if check_param_bit & 0b100 == 100:
             # dist is not given, but move_time is given (100, 110) => calculate dist
             dist = speed * move_time
@@ -211,7 +216,7 @@ class TurtleBot:
             self.twist_pub.publish(self.twist_msg)
             start_time += self.check_incident()
             self.RATE.sleep()
-        print("[%s] end move | distance goal : %d " % (self.name, self.get_dist(x, y)))
+        print("[%s] end move | distance goal : %.3f" % (self.name, self.get_dist(x, y)))
         end_time = time.time()
         print("[%s] end move | move time: %.3f / speed: %.3f" % (self.name, end_time-start_time, speed))
         self.stop()
@@ -224,7 +229,7 @@ class TurtleBot:
             raise ValueError("Lack of arguments.")
         if check_param_bit in {0b011, 0b110}:
             # only angle or rotate_time is given (011, 110) => use default speed
-            speed = self.MAX_ANGULAR_SPEED / 4
+            speed = self.DEFAULT_ANGLUAR_SPEED
         if check_param_bit & 0b100 == 0b100:
             # angle is not given, but rotate_time is given (100, 110) => calculate angle
             angle = speed * rotate_time
@@ -258,23 +263,31 @@ class TurtleBot:
         
         if angle < 0:
             get_angle_dist = lambda: self.direction_acc - goal_direction_acc
+            def slowdown():
+                self.twist_msg.angular.z = min(self.twist_msg.angular.z + self.ANGLUAR_SLOWDOWN_STEP, -self.MIN_ANGULAR_SPEED)
         else:
             get_angle_dist = lambda: goal_direction_acc - self.direction_acc
+            def slowdown():
+                self.twist_msg.angular.z = max(self.twist_msg.angular.z - self.ANGLUAR_SLOWDOWN_STEP, self.MIN_ANGULAR_SPEED)
 
         print("[%s] start rotate | distance :" % self.name, get_angle_dist())
         cnt = 0
-        while get_angle_dist() > self.ANGLE_TORLERANCE:
+        now_left_to_goal = get_angle_dist()
+        while now_left_to_goal > self.ANGLE_TORLERANCE:
             if rospy.is_shutdown():
                 return
             cnt += 1
-            if cnt > self.RATE_HZ:
-                print("[%s] rotating | now(raw) : %f / speed : %f / Goal(raw) : %f / distance(acc) : %f" % \
-                    (self.name, self.direction_raw, self.twist_msg.angular.z , goal_direction_acc, get_angle_dist()))
+            if cnt > self.RATE_HZ / 5:
+                print("[%s] rotating | now : %f / speed : %f" % (self.name, self.direction_acc, self.twist_msg.angular.z))
+                print("[%s] rotating | Goal : %f / distance : %f" % (self.name, goal_direction_acc, now_left_to_goal))
                 cnt = 0
+            if now_left_to_goal < self.ROTATE_SLOWDOWN_BOUNDARY:
+                slowdown()
             self.twist_pub.publish(self.twist_msg)
             self.RATE.sleep()
+            now_left_to_goal = get_angle_dist()
         end_time = time.time()
-        print("[%s] end rotate | distance goal : %d "% (self.name, get_angle_dist()))
+        print("[%s] end rotate | distance goal : %.3f "% (self.name, get_angle_dist()))
         print("[%s] end rotate | rotate time: %.3f / speed: %.3f" % (self.name, end_time-start_time, speed))
         self.stop()
 
@@ -306,7 +319,7 @@ class TurtleBot:
             self.state = State.CARRY_WAIT
             self.condition.notify()
         
-        ANGLE_TORLERANCE_DEGREES = self.ANGLE_TORLERANCE * 180 / pi
+        ANGLE_TORLERANCE_DEGREES = self.ANGLE_TORLERANCE * RAD_TO_DEG
         
         while True:
             if rospy.is_shutdown():
@@ -323,8 +336,8 @@ class TurtleBot:
                     self.condition.notify()
                 if nearest_angle > 180:
                     nearest_angle -= 360
-                self.rotate(angle=nearest_angle * pi / 180.0,
-                            speed=self.MAX_ANGULAR_SPEED / 15.0)
+                self.rotate(angle=nearest_angle * DEG_TO_RAD,
+                            speed=self.DEFAULT_ANGLUAR_SPEED / 10.0)
             except ValueError:  # no objects in front of the bot
                 self.stop()
                 return
@@ -362,7 +375,7 @@ class TurtleBot:
                     dist = float(arg)
                     self.move(dist=dist)
                 elif cmd == 'R':
-                    angle = float(arg)
+                    angle = float(arg) * DEG_TO_RAD
                     self.rotate(angle=angle)
                 elif cmd == 'S':
                     if arg:
