@@ -55,7 +55,10 @@ class TurtleBot:
     BASE_STOP_TIME = 1.0
     BOT_NAME_PREFIX = "turtle_"
 
+    LINEAR_TOLERANCE = 0.001
     ANGLE_TORLERANCE = 0.003
+    
+    MOVE_SLOWDOWN_BOUNDARY = 0.075
     ROTATE_SLOWDOWN_BOUNDARY = 0.75
     
     # limitations of turtlebot3 burger model
@@ -63,8 +66,11 @@ class TurtleBot:
     # MAX_ANGULAR_SPEED = 2.84  # rad/s
     
     # let's limit them slightly slower
-    DEFAULT_LINEAR_SPEED  = 0.1  # m/s
-    DEFAULT_ANGLUAR_SPEED = 0.75  # rad/s
+    DEFAULT_LINEAR_SPEED = 0.1  # m/s
+    LINEAR_SLOWDOWN_STEP = 0.002
+    MIN_LINEAR_SPEED = 0.01
+    
+    DEFAULT_ANGLUAR_SPEED = 0.75   # rad/s
     ANGLUAR_SLOWDOWN_STEP = 0.01
     MIN_ANGULAR_SPEED = 0.05
     
@@ -178,11 +184,12 @@ class TurtleBot:
             move_time = dist / speed
         
         twist = self.twist_msg
-        twist.linear.x = speed
 
         if dist < 0:
-            twist.linear.x *= -1
+            speed *= -1
             dist *= -1
+        
+        twist.linear.x = speed
         
         with self.condition:
             if self.state == State.CARRY_STANDBY:
@@ -198,24 +205,33 @@ class TurtleBot:
                 else:
                     self.state = State.FORWARD
             self.condition.notify()
+        
+        if speed < 0:
+            def slowdown():
+                self.twist_msg.linear.x = min(self.twist_msg.linear.x + self.LINEAR_SLOWDOWN_STEP, -self.MIN_LINEAR_SPEED)
+        else:
+            def slowdown():
+                self.twist_msg.linear.x = max(self.twist_msg.linear.x - self.LINEAR_SLOWDOWN_STEP, self.MIN_LINEAR_SPEED)
 
         x, y = self.pos
-        print("[%s] start move | pose now :" % self.name, self.pos)
-        print("[%s] start move | dist now :" % self.name, dist)
+        print("[%s] start move | pose now : %.3f, %.3f / dist now : %.3f" % (self.name, *self.pos, dist))
         print("[%s] start move | move estimated time: %.3f / speed: %.3f" % (self.name, move_time, speed))
         start_time = time.time()
         cnt = 0
-        while (self.get_dist(x, y) < dist):
+        now_left_dist = dist - self.get_dist(x, y)
+        while (now_left_dist > self.LINEAR_TOLERANCE):
             if rospy.is_shutdown():
                 return
             cnt += 1
             if cnt > self.RATE_HZ:
-                print("[%s] moving | distance :" % self.name, self.get_dist(x, y))
-                print("[%s] moving | pose now :" % self.name, x, y)   
+                print("[%s] moving | distance : %.3f / pose now : %.3f, %.3f" % (self.name, self.get_dist(x, y), *self.pos))
                 cnt = 0
             self.twist_pub.publish(self.twist_msg)
             start_time += self.check_incident()
             self.RATE.sleep()
+            if now_left_dist < self.MOVE_SLOWDOWN_BOUNDARY:
+                slowdown()
+            now_left_dist = dist - self.get_dist(x, y)
         print("[%s] end move | distance goal : %.3f" % (self.name, self.get_dist(x, y)))
         end_time = time.time()
         print("[%s] end move | move time: %.3f / speed: %.3f" % (self.name, end_time-start_time, speed))
