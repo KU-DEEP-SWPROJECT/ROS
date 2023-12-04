@@ -52,14 +52,13 @@ class State(Enum):
 class TurtleBot:
     __ID = 1
     RATE_HZ = 50
-    BASE_STOP_TIME = 1.0
     BOT_NAME_PREFIX = "turtle_"
 
     LINEAR_TOLERANCE = 0.001
     ANGLE_TORLERANCE = 0.003
     
-    MOVE_SLOWDOWN_BOUNDARY = 0.075
-    ROTATE_SLOWDOWN_BOUNDARY = 0.75
+    MOVE_SLOWDOWN_BOUNDARY = 0.055
+    ROTATE_SLOWDOWN_BOUNDARY = 0.7
     
     # limitations of turtlebot3 burger model
     # MAX_LINEAR_SPEED  = 0.22  # m/s
@@ -98,6 +97,8 @@ class TurtleBot:
         
         self.last_front_data = None  # for carrying task
         rospy.on_shutdown(lambda: self.twist_pub.publish(Twist()))
+        
+        self.__TERMINATED = False
     
     @staticmethod
     def __range_predict(radius, move=0.0):
@@ -157,7 +158,7 @@ class TurtleBot:
         st = time.time()
         with self.condition:
             if self.got_incident:
-                while not rospy.is_shutdown():
+                while not self.__TERMINATED:
                     rospy.loginfo("[%s] Incident detected! Wait for removed...", self.name)
                     self.twist_pub.publish(Twist())
                     self.condition.wait_for(lambda: not self.got_incident, timeout=3.0)
@@ -167,7 +168,7 @@ class TurtleBot:
             self.condition.notify()
         return time.time() - st
 
-    def move(self, dist=None, speed=None, move_time=None):
+    def move(self, dist=None, speed=None, move_time=None, keeping_time=0):
         # (speed, move_time) has higher priority
         check_param_bit = (dist is None) << 2 | (speed is None) << 1 | (move_time is None)
         if check_param_bit | 0b010 == 0b111:
@@ -214,14 +215,11 @@ class TurtleBot:
                 self.twist_msg.linear.x = max(self.twist_msg.linear.x - self.LINEAR_SLOWDOWN_STEP, self.MIN_LINEAR_SPEED)
 
         x, y = self.pos
-        print("[%s] start move | pose now : %.3f, %.3f / dist now : %.3f" % (self.name, *self.pos, dist))
-        print("[%s] start move | move estimated time: %.3f / speed: %.3f" % (self.name, move_time, speed))
+        print("[%s] start move | pose now : %.3f, %.3f / dist now : %.3f / speed: %.3f" % (self.name, *self.pos, dist, speed))
         start_time = time.time()
         cnt = 0
         now_left_dist = dist - self.get_dist(x, y)
-        while (now_left_dist > self.LINEAR_TOLERANCE):
-            if rospy.is_shutdown():
-                return
+        while (now_left_dist > self.LINEAR_TOLERANCE) and not self.__TERMINATED:
             cnt += 1
             if cnt > self.RATE_HZ:
                 print("[%s] moving | distance : %.3f / pose now : %.3f, %.3f" % (self.name, self.get_dist(x, y), *self.pos))
@@ -232,12 +230,11 @@ class TurtleBot:
             if now_left_dist < self.MOVE_SLOWDOWN_BOUNDARY:
                 slowdown()
             now_left_dist = dist - self.get_dist(x, y)
-        print("[%s] end move | distance goal : %.3f" % (self.name, self.get_dist(x, y)))
-        end_time = time.time()
-        print("[%s] end move | move time: %.3f / speed: %.3f" % (self.name, end_time-start_time, speed))
-        self.stop()
+        actual_move_time = time.time() - start_time
+        print("[%s] end move | distance goal : %.3f / actual move time: %.3f" % (self.name, self.get_dist(x, y), actual_move_time))
+        self.stop(keeping_time - move_time)
 
-    def rotate(self, angle=None, speed=None, rotate_time=None):
+    def rotate(self, angle=None, speed=None, rotate_time=None, keeping_time=0):
         # (speed, rotate_time) has higher priority
         check_param_bit = (angle is None) << 2 | (speed is None) << 1 | (rotate_time is None)
         if check_param_bit | 0b010 == 0b111:
@@ -262,13 +259,12 @@ class TurtleBot:
             angle -= TWO_PI
         goal_direction_acc = self.direction_acc + angle
         
-        print("[%s] start rotate | angle now : %f (%f)" % (self.name, self.direction_acc, self.direction_raw))
-        print("[%s] start rotate | goal angle : %f (%f)" % (self.name, goal_direction_acc, goal_direction_acc % TWO_PI))
-        print("[%s] start rotate | angle torlerance : %f" % (self.name, self.ANGLE_TORLERANCE))
-            
         twist = self.twist_msg
         twist.angular.z = speed
-        print("[%s] start rotate | rotate estimated time: %.3f / speed: %.3f" % (self.name, rotate_time, speed))
+
+        print("[%s] start rotate | angle now : %.3f (%.3f)" % (self.name, self.direction_acc, self.direction_raw))
+        print("[%s] start rotate | goal angle : %.3f (%.3f) / speed : %.3f" % (self.name, goal_direction_acc, goal_direction_acc % TWO_PI, speed))
+        print("[%s] start rotate | angle torlerance : %.3f" % (self.name, self.ANGLE_TORLERANCE))
         
         with self.condition:
             if not self.state.name.startswith('CARRY_'):
@@ -286,35 +282,32 @@ class TurtleBot:
             def slowdown():
                 self.twist_msg.angular.z = max(self.twist_msg.angular.z - self.ANGLUAR_SLOWDOWN_STEP, self.MIN_ANGULAR_SPEED)
 
-        print("[%s] start rotate | distance :" % self.name, get_angle_dist())
+        print("[%s] start rotate | distance : %.3f" % (self.name, get_angle_dist()))
         cnt = 0
         now_left_to_goal = get_angle_dist()
-        while now_left_to_goal > self.ANGLE_TORLERANCE:
-            if rospy.is_shutdown():
-                return
+        while now_left_to_goal > self.ANGLE_TORLERANCE and not self.__TERMINATED:
             cnt += 1
-            if cnt > self.RATE_HZ / 5:
-                print("[%s] rotating | now : %f / speed : %f" % (self.name, self.direction_acc, self.twist_msg.angular.z))
-                print("[%s] rotating | Goal : %f / distance : %f" % (self.name, goal_direction_acc, now_left_to_goal))
+            if cnt > self.RATE_HZ / 10:
+                print("[%s] rotating | now : %.3f / distance : %.3f / speed : %.3f" % (self.name, self.direction_acc, now_left_to_goal, self.twist_msg.angular.z))
                 cnt = 0
             if now_left_to_goal < self.ROTATE_SLOWDOWN_BOUNDARY:
                 slowdown()
             self.twist_pub.publish(self.twist_msg)
             self.RATE.sleep()
             now_left_to_goal = get_angle_dist()
-        end_time = time.time()
-        print("[%s] end rotate | distance goal : %.3f "% (self.name, get_angle_dist()))
-        print("[%s] end rotate | rotate time: %.3f / speed: %.3f" % (self.name, end_time-start_time, speed))
-        self.stop()
+        actual_rotate_time = time.time() - start_time
+        print("[%s] end rotate | distance goal : %.3f / actual rotate time: %.3f"% (self.name, get_angle_dist(), actual_rotate_time))
+        self.stop(keeping_time - actual_rotate_time)
 
     def stop(self, stop_time=None):
-        if stop_time is None:
-            stop_time = self.BASE_STOP_TIME
-        start_time = time.time()
-        
         twist = self.twist_msg
         twist.linear.x = 0
         twist.angular.z = 0
+
+        if stop_time is None or stop_time < 0:
+            self.twist_pub.publish(self.twist_msg)
+            return
+        start_time = time.time()
         
         with self.condition:
             if self.state == State.CARRY_STICK:
@@ -338,7 +331,8 @@ class TurtleBot:
         ANGLE_TORLERANCE_DEGREES = self.ANGLE_TORLERANCE * RAD_TO_DEG
         
         while True:
-            if rospy.is_shutdown():
+            if self.__TERMINATED:
+                self.stop()
                 return
             if self.last_front_data is None:
                 self.RATE.sleep()
@@ -383,16 +377,19 @@ class TurtleBot:
         self.queue = deque(command_string.split('/'))
 
     def run(self):
-        while self.queue and not rospy.is_shutdown():
+        while self.queue:
+            if self.__TERMINATED:
+                self.stop()
+                return
             q = self.queue.popleft()
             cmd, arg = q[0], q[1:]
             try:
                 if cmd == 'F':
-                    dist = float(arg)
-                    self.move(dist=dist)
+                    dist, keeping_time = map(float, arg.split(','))
+                    self.move(dist=dist, keeping_time=keeping_time)
                 elif cmd == 'R':
-                    angle = float(arg) * DEG_TO_RAD
-                    self.rotate(angle=angle)
+                    angle, keeping_time = map(float, arg.split(','))
+                    self.rotate(angle=angle * DEG_TO_RAD, keeping_time=keeping_time)
                 elif cmd == 'S':
                     if arg:
                         self.stop(float(arg))
@@ -401,8 +398,8 @@ class TurtleBot:
                 elif cmd == 'W':
                     time.sleep(float(arg))
                 elif cmd == 'B':
-                    dist = float(arg)
-                    self.move(dist=-dist)
+                    dist, keeping_time = map(float, arg.split(','))
+                    self.move(dist=-dist, keeping_time=keeping_time)
                 else:
                     print("[%s] [Turtlebot#run] Error: Invalid command keyword: %s" % (self.name, cmd))
             except ValueError:
@@ -431,12 +428,16 @@ class TurtleBot:
         dx = x - self.pos[0]
         dy = y - self.pos[1]
         return sqrt(dx*dx + dy*dy)
+    
+    def terminate(self):
+        self.__TERMINATED = True
 
 class BotController:
     def __init__(self, array_of_bot: List[TurtleBot]):
         self.bots = array_of_bot
         self.command_array = []
-        pass
+        self.now_running_threads = []
+        self.__TERMINATED = False
     
     def push_command(self, command: str):
         self.command_array.append(command)
@@ -457,27 +458,28 @@ class BotController:
             self.execute_command()
             
     def run_all_turtlebots(self):
-        threads = []
+        self.now_running_threads = []
         for turtle_bot in self.bots:
             if turtle_bot is not None:
-                threads.append(Thread(target=turtle_bot.run))
-        for thread in threads:
+                self.now_running_threads.append(Thread(target=turtle_bot.run))
+        for thread in self.now_running_threads:
             thread.start()
-        for thread in threads:
+        for thread in self.now_running_threads:
             thread.join()
+        self.now_running_threads = []
     
     def carry_object(self):
         # Bots should be at the points after executing commands from the algorithm.
-        threads = []
+        self.now_running_threads = []
         active_bots = []
         for turtle_bot in self.bots:
             if turtle_bot is not None and turtle_bot.twist_pub.get_num_connections() > 0:
-                threads.append(Thread(target=turtle_bot.carry))
+                self.now_running_threads.append(Thread(target=turtle_bot.carry))
                 active_bots.append(turtle_bot)
-        for thread in threads:
+        for thread in self.now_running_threads:
             thread.start()
         prev = time.time()
-        while not rospy.is_shutdown():
+        while not self.__TERMINATED:
             for bot in active_bots:
                 bot.condition.acquire()
             try:
@@ -496,18 +498,24 @@ class BotController:
                 for bot in active_bots:
                     bot.condition.notify()
                     bot.condition.release()
-        for thread in threads:
+        for thread in self.now_running_threads:
             thread.join()
+        self.now_running_threads = []
+    
+    def terminate_bots(self):
+        for bot in self.bots:
+            if bot is not None:
+                bot.terminate()
 
 if __name__=="__main__":
+    rospy.init_node('teleop_twist_keyboard')
+    BOT_COUNT = int(input("터틀봇 운영 대수: "))
+    bots = [None]
+    for i in range(BOT_COUNT):
+        bots.append(TurtleBot())
+    
+    controller = BotController(bots)
     try:
-        rospy.init_node('teleop_twist_keyboard')
-        BOT_COUNT = int(input("터틀봇 운영 대수: "))
-        bots = [None]
-        for i in range(BOT_COUNT):
-            bots.append(TurtleBot())
-        
-        controller = BotController(bots)
         print("터틀봇에게 전송할 명령을 입력하세요.")
         print("- 입력된 명령들을 실행하려면 `run`을 입력하세요.")
         print("- 물건 운반 작업을 진행하려면 `carry`를 입력하세요.")
@@ -525,6 +533,11 @@ if __name__=="__main__":
                 break
             else:
                 controller.push_command(temp_cmd)
-        print("[@] Program exits.")
     except KeyboardInterrupt:
-        rospy.signal_shutdown()
+        print("[@] Sending signal to bots to terminate...")
+        controller.terminate_bots()
+        print("[@] Waiting bots to die...")
+        for thread in controller.now_running_threads:
+            thread.join()
+    finally:
+        print("[@] Program finished.")
