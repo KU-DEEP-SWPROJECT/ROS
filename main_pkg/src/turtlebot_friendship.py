@@ -19,11 +19,11 @@ from typing import List
 
 from incident_detect import IncidentDetector
 
-from Gunwoo import *
-from Timeastar import *
+# from Gunwoo import *
+# from Timeastar import *
 from turtlebot import *
 from Image_process.Gunwoo import *
-from friendship_test_package.src.my_timeastar import *
+from my_timeastar import *
 
 
 if sys.platform == 'win32':
