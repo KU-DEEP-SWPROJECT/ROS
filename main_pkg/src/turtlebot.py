@@ -526,7 +526,7 @@ def get_cmd_form_camera():
 
     # parsing layer 1
     pixel = cam_output[0]
-    bot_radius = 0#cam_output[1]
+    bot_radius = 20#cam_output[1]
     bot_pos_array = cam_output[2]
     jim_array = cam_output[3]
     obs=[]
