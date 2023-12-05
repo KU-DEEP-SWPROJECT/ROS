@@ -531,7 +531,7 @@ def get_cmd_form_camera():
     obs=[]
     robot_color=["R","G","B","P"]
     print(cam_output)
-    print_Arry = turtlebot_astar(pixel, None, bot_pos_array, jim_array)
+    print_Arry = turtlebot_astar(pixel, None, bot_pos_array.tolist(), jim_array.tolist())
     return print_Arry, len(bot_pos_array)
 
 
