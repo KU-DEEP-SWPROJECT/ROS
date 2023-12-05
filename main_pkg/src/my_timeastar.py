@@ -32,7 +32,7 @@ class PathBacktracker:
     
     def __init__(self, parent: Optional['PathBacktracker'], act: int = -1) -> None:
         self.parent = parent
-        self.act = act  # -1 = None(ignore), 0 = wait, 1 = forward, 2 = rotate left, 3 = rotate right
+        self.act = act  # -1 = None(ignore), 0 = wait, 1 = forward, 2 = rotate left, 3 = rotate right, 4 = rotate 180
         self.depth = 1 if parent is None else parent.depth + 1
     
     def get_acts(self):
@@ -54,6 +54,8 @@ class PathBacktracker:
                 direction = (direction - 1) % 4
             elif a == 3:
                 direction = (direction + 1) % 4
+            elif a == 4:
+                direction = (direction + 2) % 4
             arr.append((x, y))
         return arr
     
@@ -90,6 +92,11 @@ class PathBacktracker:
                 state = 0
                 prev_dist = 0
                 command.append('R-90,3')
+            elif a == 4:
+                if prev_dist: command.append('F%.2f,%.2f' % (prev_dist*PIXEL_RATE, prev_dist*KEEPING_TIME_RATE) if state else 'S'+str(prev_dist*PIXEL_RATE))
+                state = 0
+                prev_dist = 0
+                command.append('R180,3')
         if prev_dist: command.append('F%.2f,%.2f' % (prev_dist*PIXEL_RATE, prev_dist*KEEPING_TIME_RATE) if state else 'S'+str(prev_dist*PIXEL_RATE))
         return ('' if bot_num is None else str(bot_num) + ':') + '/'.join(command)
     
@@ -128,7 +135,7 @@ def expect_rotate(this_x, this_y, this_direction, target_x, target_y):
 # data = (time, x, y, direction, remain_distance, remain_time_to_stop_and_rotate, path_backtracker)
 # remain_time_to_stop_and_rotate: only wait if positive
 
-def time_a_star(start_point, start_direction, target_point, obstacle, another_visited):
+def time_a_star(start_point, start_direction, target_point, target_direction, obstacle, another_visited):
     q = []
     this_visited = set()
     _dist = manhattan(start_point, target_point)
@@ -146,6 +153,18 @@ def time_a_star(start_point, start_direction, target_point, obstacle, another_vi
                         break
             if not flag_possible_goal:
                 continue
+            if target_direction == direction:
+                pass
+            elif target_direction == ACTION[direction][0]:
+                time += Attributes.ROTATE_TIME
+                path_backtracker = PathBacktracker(path_backtracker, 2)
+            elif target_direction == ACTION[direction][1]:
+                time += Attributes.ROTATE_TIME
+                path_backtracker = PathBacktracker(path_backtracker, 3)
+            else:
+                time += Attributes.ROTATE_TIME * 2
+                path_backtracker = PathBacktracker(path_backtracker, 4)
+            direction = target_direction
             return time, x, y, direction, path_backtracker
         new_time = time + 1
         flag_now_possible = True
@@ -209,7 +228,8 @@ def turtlebot_astar(size, _, start_point, target_point, start_direction=2):
     for i in range(n):
         sp = tuple(start_point[i])
         temp_targ_point.sort(key=lambda x: -euclid_square(sp, x))
-        robots.append((sp, start_direction, tuple(temp_targ_point.pop())))
+        tp = temp_targ_point.pop()
+        robots.append((sp, start_direction, tuple(tp), 2 if tp[1] < mid_y else 0))
     obstacle = set()
     rec_xy = ((min(target_point[k][0] for k in range(n)), min(target_point[k][1] for k in range(n))), 
               (max(target_point[k][0] for k in range(n)), max(target_point[k][1] for k in range(n))))
