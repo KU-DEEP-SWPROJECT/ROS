@@ -6,9 +6,9 @@ from Gunwoo import *
 from Timeastar import *
 from turtlebot import *
 
-BOT_DIR = 0b01
+BOT_DIR = 0b00
 BOT_LINENAR_TIME=1
-BOT_ROTATE_TIME=1
+BOT_ROTATE_TIME=25
 BOT_STOP_TIME=1
 
 # get camera data
@@ -16,7 +16,7 @@ cam_output  = get_points(2)
 
 # parsing layer 1
 pixel = cam_output[0]
-bot_radius = cam_output[1]
+bot_radius = 10
 bot_pos_array = cam_output[2]
 jim_array = cam_output[3]
 obs=[]
@@ -31,26 +31,22 @@ def get_goal_pos(robot_array,jim_array,num):
 
 # set robot data
 robots = []
-actual_pixel_size = 100
-temp_rate = actual_pixel_size / 1000
 
 for i in range(len(bot_pos_array)):
-    robots.append(Robot(bot_pos_array[i] / temp_rate,BOT_DIR,BOT_LINENAR_TIME,BOT_ROTATE_TIME,BOT_STOP_TIME,robot_color[i]))
+    robots.append(Robot(bot_pos_array[i],BOT_DIR,BOT_LINENAR_TIME,BOT_ROTATE_TIME,BOT_STOP_TIME,robot_color[i]))
 
 # set Astar
-astar = TimeAstar(SIZE=actual_pixel_size, Radius=bot_radius / temp_rate, robots=robots,goal=jim_array / temp_rate,obstacles=obs / temp_rate)
+astar = TimeAstar(SIZE=100, Radius=bot_radius, robots=robots,goal=jim_array, obstacles=obs)
 #start setting
 astar.Robot_sort()
 for i in range(len(robots)):
     astar.Search(i)
-    break
 
 
 
 # print each bot's path
-for i in astar.robots:
-    print(i.path)
-    break
+for i in range(len(astar.robots)):
+    print(astar.ToCommand(i))
 '''
 try:
         rospy.init_node('teleop_twist_keyboard')

@@ -19,6 +19,11 @@ from typing import List
 
 from incident_detect import IncidentDetector
 
+from robot_class import robot as Robot
+from Gunwoo import *
+from Timeastar import *
+from turtlebot import *
+
 
 if sys.platform == 'win32':
     import msvcrt
@@ -209,7 +214,7 @@ class TurtleBot:
                 print("[%s] moving | pose now :" % self.name, x, y)   
                 cnt = 0
             self.twist_pub.publish(self.twist_msg)
-            start_time += self.check_incident()
+            #start_time += self.check_incident()
             self.RATE.sleep()
         print("[%s] end move | distance goal : %d " % (self.name, self.get_dist(x, y)))
         end_time = time.time()
@@ -497,5 +502,8 @@ if __name__=="__main__":
             else:
                 controller.push_command(temp_cmd)
         print("[@] Program exits.")
+
+
+        
     except KeyboardInterrupt:
         rospy.signal_shutdown()

@@ -109,146 +109,26 @@ def get_point_b(x, y, zero, re_left_side, pixel_x_size, pixel_y_size, real_sqaur
 
 def mapping(k_real_size, turtle_num, burden_real_size, m_color):
     real_bg_size = 200
-    bg_x = bg_y = 1000
-    bg_cnt = 500
-    bg_size = bg_x/bg_cnt
+    pixel_size = 100
     
 
-
-
-    background = np.ones((bg_x, bg_y, 3), dtype=np.uint8) * 255
-    color = (0, 0, 0)  
-    thickness = 3
 
     oc = k_real_size
-    
+    burden_oc = burden_real_size
+
     turtle_mapping_loc = np.zeros((turtle_num, 2), dtype=int)
     burden_mapping_loc = np.zeros((4,2), dtype=int)
 
-    m_x = np.zeros(turtle_num, dtype=int)
-    m_y = np.zeros(turtle_num, dtype=int)
 
-    burden_oc = burden_real_size
-    
-
-    burden_m_x = np.zeros(4, dtype=int)
-    burden_m_y = np.zeros(4, dtype=int)
-
-    # for i in range(bg_cnt+1):
-    #     for j in range(bg_cnt+1):
-    #         cv2.rectangle(background, (int(bg_size*i), int(bg_size*j)), (int(bg_size), int(bg_size)), color, thickness)
-    # cv2.circle(background, (int(bg_size*bg_cnt/2), int(bg_size*bg_cnt/2)),int(bg_x/bg_cnt/2), (0,0,255), -1 )    
-
-
-    block_size = real_bg_size / bg_cnt
+    block_size = pixel_size / real_bg_size
 
     for i in range(turtle_num):
-        if(oc[i][0]<0):
-            if(oc[i][1]<0):
-                m_x[i] = int(oc[i][0] / block_size) -1
-                m_y[i] = int(oc[i][1] / block_size) -1
-            else :
-                m_x[i] = int(oc[i][0] / block_size) -1
-                m_y[i] = int(oc[i][1] / block_size) +1
-        else:
-            if(oc[i][1]<0):
-                m_x[i] = int(oc[i][0] / block_size) +1
-                m_y[i] = int(oc[i][1] / block_size) -1
-            else :
-                m_x[i] = int(oc[i][0] / block_size) +1
-                m_y[i] = int(oc[i][1] / block_size) +1
-        
-        if(m_x[i] < 0):
-            if(m_y[i] < 0):
-                m_x[i] = m_x[i] * -1  #절댓값 씌워줌, 크기만 존재
-                m_y[i] = m_y[i] * -1
-                p_x = int ( bg_cnt/2 - m_x[i] )
-                p_y = int (bg_cnt/2 + m_y[i] )
-                turtle_mapping_loc[i][0] = int (p_x*bg_size)
-                turtle_mapping_loc[i][1] = int(p_y*bg_size)
-                # cv2.rectangle(background, (int (p_x*bg_size), int(p_y*bg_size)), ( int( (p_x+1)*bg_size), int( (p_y+1)*bg_size)) , m_color[i], -1)
-            
-            else:
-                m_x[i] = m_x[i] * -1
-                m_y[i] = m_y[i] * 1
-                p_x = int ( bg_cnt/2 - m_x[i] )
-                p_y = int (bg_cnt/2 - m_y[i] )
-                turtle_mapping_loc[i][0] = int (p_x*bg_size)
-                turtle_mapping_loc[i][1] = int(p_y*bg_size)
-                # cv2.rectangle(background, (int (p_x*bg_size), int(p_y*bg_size)), ( int( (p_x+1)*bg_size), int( (p_y+1)*bg_size)) , m_color[i], -1)
-            
-        else:
-            if(m_y[i] < 0):
-                m_x[i] = m_x[i] * 1
-                m_y[i] = m_y[i] * -1
-                p_x = int ( bg_cnt/2 + m_x[i] )
-                p_y = int (bg_cnt/2 + m_y[i] )
-                turtle_mapping_loc[i][0] = int (p_x*bg_size)
-                turtle_mapping_loc[i][1] = int(p_y*bg_size)
-                # cv2.rectangle(background, (int (p_x*bg_size), int(p_y*bg_size)), ( int( (p_x+1)*bg_size), int( (p_y+1)*bg_size)) , m_color[i], -1)
-            else:
-                m_x[i] = m_x[i] * 1
-                m_y[i] = m_y[i] * 1
-                p_x = int ( bg_cnt/2 + m_x[i] )
-                p_y = int (bg_cnt/2 - m_y[i] )
-                turtle_mapping_loc[i][0] = int (p_x*bg_size)
-                turtle_mapping_loc[i][1] = int(p_y*bg_size)
-                # cv2.rectangle(background, (int (p_x*bg_size), int(p_y*bg_size)), ( int( (p_x+1)*bg_size), int( (p_y+1)*bg_size)) , m_color[i], -1)
-   
-    #들어야 할 짐 그래프 표시
+        turtle_mapping_loc[i][0] = int((oc[i][0] + 100) * block_size)
+        turtle_mapping_loc[i][1] = int((100 - oc[i][1]) * block_size)
     for i in range(4):
-        if(burden_oc[i][0]<0):
-            if(burden_oc[i][1]<0):
-                burden_m_x[i] = int(burden_oc[i][0] / block_size) -1
-                burden_m_y[i] = int(burden_oc[i][1] / block_size) -1
-            else :
-                burden_m_x[i] = int(burden_oc[i][0] / block_size) -1
-                burden_m_y[i] = int(burden_oc[i][1] / block_size) +1
-        else:
-            if(burden_oc[i][1]<0):
-                burden_m_x[i] = int(burden_oc[i][0] / block_size) +1
-                burden_m_y[i] = int(burden_oc[i][1] / block_size) -1
-            else :
-                burden_m_x[i] = int(burden_oc[i][0] / block_size) +1
-                burden_m_y[i] = int(burden_oc[i][1] / block_size) +1
-       
-        if(burden_m_x[i] < 0):
-            if(burden_m_y[i] < 0):
-                burden_m_x[i] = burden_m_x[i] * -1  #절댓값 씌워줌, 크기만 존재
-                burden_m_y[i] = burden_m_y[i] * -1
-                p_x = int ( bg_cnt/2 - burden_m_x[i] )
-                p_y = int (bg_cnt/2 + burden_m_y[i] )
-                burden_mapping_loc[i][0] = int (p_x*bg_size)
-                burden_mapping_loc[i][1] = int(p_y*bg_size)
-               #  cv2.rectangle(background, (int (p_x*bg_size), int(p_y*bg_size)), ( int( (p_x+1)*bg_size), int( (p_y+1)*bg_size)) , (0,0,0), -1)
-            
-            else:
-                burden_m_x[i] = burden_m_x[i] * -1
-                burden_m_y[i] = burden_m_y[i] * 1
-                p_x = int ( bg_cnt/2 - burden_m_x[i] )
-                p_y = int (bg_cnt/2 - burden_m_y[i] )
-                burden_mapping_loc[i][0] = int (p_x*bg_size)
-                burden_mapping_loc[i][1] = int(p_y*bg_size)
-              #   cv2.rectangle(background, (int (p_x*bg_size), int(p_y*bg_size)), ( int( (p_x+1)*bg_size), int( (p_y+1)*bg_size)) ,(0,0,0), -1)
-            
-        else:
-            if(burden_m_y[i] < 0):
-                burden_m_x[i] = burden_m_x[i] * 1
-                burden_m_y[i] = burden_m_y[i] * -1
-                p_x = int ( bg_cnt/2 + burden_m_x[i] )
-                p_y = int (bg_cnt/2 + burden_m_y[i] )
-                burden_mapping_loc[i][0] = int (p_x*bg_size)
-                burden_mapping_loc[i][1] = int(p_y*bg_size)
-               #  cv2.rectangle(background, (int (p_x*bg_size), int(p_y*bg_size)), ( int( (p_x+1)*bg_size), int( (p_y+1)*bg_size)) ,(0,0,0), -1)
-            else:
-                burden_m_x[i] = burden_m_x[i] * 1
-                burden_m_y[i] = burden_m_y[i] * 1
-                p_x = int ( bg_cnt/2 + burden_m_x[i] )
-                p_y = int (bg_cnt/2 - burden_m_y[i] )
-                burden_mapping_loc[i][0] = int (p_x*bg_size)
-                burden_mapping_loc[i][1] = int(p_y*bg_size)
-               #  cv2.rectangle(background, (int (p_x*bg_size), int(p_y*bg_size)), ( int( (p_x+1)*bg_size), int( (p_y+1)*bg_size)) ,(0,0,0) , -1)
-    
+        burden_mapping_loc[i][0] = int((burden_oc[i][0] + 100) * block_size)
+        burden_mapping_loc[i][1] = int((100-burden_oc[i][1]) * block_size
+)
     
     return_burden = np.empty((4, 2), dtype=int)
     return_burden[0] = burden_mapping_loc[2]
@@ -256,11 +136,7 @@ def mapping(k_real_size, turtle_num, burden_real_size, m_color):
     return_burden[2] = burden_mapping_loc[1]
     return_burden[3] = burden_mapping_loc[0]
    
-
-    # cv2.imshow("White Square", background)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
-    return bg_cnt, real_bg_size, turtle_mapping_loc, return_burden
+    return pixel_size, real_bg_size, turtle_mapping_loc, return_burden
 
 def get_points(loop_exit):
     Aruco_Dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
