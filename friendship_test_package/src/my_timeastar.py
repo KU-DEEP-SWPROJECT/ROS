@@ -194,9 +194,22 @@ def turtlebot_astar(size, _, start_point, target_point, start_direction=2):
     Attributes.init()
     n = len(start_point)
     mid_x, mid_y = sum(target_point[k][0] for k in range(n)) // n, sum(target_point[k][1] for k in range(n)) // n
+    rec_xy = ((min(target_point[k][0] for k in range(n)), min(target_point[k][1] for k in range(n))), 
+              (max(target_point[k][0] for k in range(n)), max(target_point[k][1] for k in range(n))))
+    temp_targ_point = target_point[:]
     for idx, tp in enumerate(target_point):
-        target_point[idx] = (tp[0] + (Attributes.BOT_SIZE // 2) * (1 if tp[0] < mid_x else -1), tp[1] + (Attributes.BOT_SIZE // 2) * (1 if tp[1] < mid_y else -1))
-    robots = [(tuple(start_point[i]), start_direction, tuple(target_point[i])) for i in range(n)]
+        temp_targ_point[idx] = (mid_x + (Attributes.BOT_SIZE // 2 + 5) * (1 if tp[0] > mid_x else -1), 
+                                rec_xy[tp[1] > mid_y][1] + (Attributes.BOT_SIZE // 2 + 5) * (1 if tp[1] > mid_y else -1))
+    robots = []
+    
+    def euclid_square(p1, p2):
+        dx, dy = p1[0]-p2[0], p1[1]-p2[1]
+        return dx*dx + dy*dy
+    
+    for i in range(n):
+        sp = tuple(start_point[i])
+        temp_targ_point.sort(key=lambda x: -euclid_square(sp, x))
+        robots.append((sp, start_direction, tuple(temp_targ_point.pop())))
     obstacle = set()
     rec_xy = ((min(target_point[k][0] for k in range(n)), min(target_point[k][1] for k in range(n))), 
               (max(target_point[k][0] for k in range(n)), max(target_point[k][1] for k in range(n))))
@@ -210,6 +223,7 @@ def turtlebot_astar(size, _, start_point, target_point, start_direction=2):
     cmds = []
     another_visited = []
     print("[friendship] robots:", *robots, sep='\n')
+    print("[friendship] obstacle:", rec_xy)
     for idx, bot in enumerate(robots):
         print("[friendship] calculating:", idx, bot)
         time_, x, y, direction, path_backtracker = time_a_star(*bot, obstacle, another_visited)
@@ -222,28 +236,19 @@ def turtlebot_astar(size, _, start_point, target_point, start_direction=2):
 
 
 if __name__ == '__main__':
-    import time
-    robots = [
-        ((93, 18), 2, (41, 144)),
-        ((26, 18), 2, (81, 143)),
-        ((138, 16), 2, (82, 102)),
-        ((64, 17), 2, (43, 102)),
-    ]
-    another_visited = []
-    
-    obstacle = set()
-    rec_xy = ((46, 120), (76, 122))
-    for i in range(rec_xy[0][0], rec_xy[1][0]+1):
-        obstacle.add((i, rec_xy[0][1]))
-        obstacle.add((i, rec_xy[1][1]))
-    for j in range(rec_xy[0][1], rec_xy[1][1]+1):
-        obstacle.add((rec_xy[0][0], i))
-        obstacle.add((rec_xy[1][0], i))
-    
-    
-    start = time.time()
-    for bot in robots:
-        time_, x, y, direction, path_backtracker = time_a_star(*bot, obstacle, another_visited)
-        another_visited.append(path_backtracker.get_pos_array(*bot[0], bot[1]))
-        print(time_, x, y, direction, path_backtracker.get_command())
-    print(time.time() - start)
+    turtlebot_astar(
+        200, 
+        None, 
+        [
+            [154, 22],
+            [30, 28],
+            [70, 24],
+            [116, 24],
+        ],
+        [
+            [84, 159],
+            [123, 157],
+            [121, 118],
+            [82, 121],
+        ]
+    )
