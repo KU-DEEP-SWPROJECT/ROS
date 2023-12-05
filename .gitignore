@@ -1,3 +1,5 @@
 *.pyc
 /CMakeLists.txt
 /test.py
+/main_pkg/src/Image_process/
+/main_pkg/src/algorithm/
