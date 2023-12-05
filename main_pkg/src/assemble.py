@@ -2,8 +2,8 @@
 
 from robot_class import robot as Robot
 
-from Gunwoo import *
-from Timeastar import *
+from Image_process.Gunwoo import *
+from algorithm.Timeastar import *
 from turtlebot import *
 
 BOT_DIR = 0b00
@@ -16,7 +16,7 @@ cam_output  = get_points(2)
 
 # parsing layer 1
 pixel = cam_output[0]
-bot_radius = 10
+bot_radius = 5#cam_output[1]
 bot_pos_array = cam_output[2]
 jim_array = cam_output[3]
 obs=[]
@@ -36,9 +36,9 @@ for i in range(len(bot_pos_array)):
     robots.append(Robot(bot_pos_array[i],BOT_DIR,BOT_LINENAR_TIME,BOT_ROTATE_TIME,BOT_STOP_TIME,robot_color[i]))
 
 # set Astar
-astar = TimeAstar(SIZE=100, Radius=bot_radius, robots=robots,goal=jim_array, obstacles=obs)
+astar = TimeAstar(SIZE=pixel, Radius=bot_radius, robots=robots,goal=jim_array, obstacles=obs)
 #start setting
-astar.Robot_sort()
+#astar.Robot_sort()
 for i in range(len(robots)):
     astar.Search(i)
 

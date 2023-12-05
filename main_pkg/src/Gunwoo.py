@@ -109,7 +109,7 @@ def get_point_b(x, y, zero, re_left_side, pixel_x_size, pixel_y_size, real_sqaur
 
 def mapping(k_real_size, turtle_num, burden_real_size, m_color):
     real_bg_size = 200
-    pixel_size = 100
+    pixel_size = 200
     
 
 
