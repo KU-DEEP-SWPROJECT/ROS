@@ -1,4 +1,4 @@
 *.pyc
 /CMakeLists.txt
 /test.py
-main_pkg/src/Path_Algorithm/
+main_pkg/src/algorithm/
