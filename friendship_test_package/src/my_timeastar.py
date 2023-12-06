@@ -1,5 +1,6 @@
 import heapq
-from typing import Union, Optional
+from itertools import permutations
+from typing import Optional
 
 push = heapq.heappush
 pop = heapq.heappop
@@ -11,10 +12,12 @@ class Attributes:
     
     @classmethod
     def init(cls):
-        cls.BOT_SIZE = cls.BOARD_SIZE // 10
+        cls.BOT_RADIUS = cls.BOARD_SIZE // 20 + 1
+        cls.BOT_SIZE = cls.BOT_RADIUS * 2
+        cls.BOT_RADIUS_SQUARE = cls.BOT_RADIUS * cls.BOT_RADIUS
         cls.BOT_SIZE_SQUARE = cls.BOT_SIZE * cls.BOT_SIZE
         cls.EUCLID_DIST_TURTLEBOT = [[i*i+j*j <= cls.BOT_SIZE_SQUARE for j in range(cls.BOARD_SIZE)] for i in range(cls.BOARD_SIZE)]
-        cls.EUCLID_DIST_WALL = [[i*i+j*j <= (cls.BOT_SIZE_SQUARE // 4) + 1 for j in range(cls.BOARD_SIZE)] for i in range(cls.BOARD_SIZE)]
+        cls.EUCLID_DIST_WALL = [[i*i+j*j <= cls.BOT_RADIUS_SQUARE + 1 for j in range(cls.BOARD_SIZE)] for i in range(cls.BOARD_SIZE)]
 
 Attributes.init()
 
@@ -27,12 +30,18 @@ ACTION = (
     (1, 3),
     (2, 0),
 )
+ROTATE_DIST = (
+    (0, 1, 2, 1),
+    (1, 0, 1, 2),
+    (2, 1, 0, 1),
+    (1, 0, 1, 2)
+)
 
 class PathBacktracker:
     
     def __init__(self, parent: Optional['PathBacktracker'], act: int = -1) -> None:
         self.parent = parent
-        self.act = act  # -1 = None(ignore), 0 = wait, 1 = forward, 2 = rotate left, 3 = rotate right
+        self.act = act  # -1 = None(ignore), 0 = wait, 1 = forward, 2 = rotate left, 3 = rotate right, 4 = rotate 180
         self.depth = 1 if parent is None else parent.depth + 1
     
     def get_acts(self):
@@ -52,14 +61,46 @@ class PathBacktracker:
                 y += DIRECTION[1][direction]
             elif a == 2:
                 direction = (direction - 1) % 4
+                for _ in range(Attributes.ROTATE_TIME - 1):
+                    arr.append((x, y))
             elif a == 3:
                 direction = (direction + 1) % 4
+                for _ in range(Attributes.ROTATE_TIME - 1):
+                    arr.append((x, y))
+            elif a == 4:
+                direction = (direction + 2) % 4
+                for _ in range(Attributes.ROTATE_TIME * 2 - 1):
+                    arr.append((x, y))
             arr.append((x, y))
+        return arr
+    
+    def get_dir_array(self, first_direction):
+        arr = [first_direction]
+        for a in self.get_acts():
+            if a == 2:
+                last_dir = arr[-1]
+                for i in range(1, Attributes.ROTATE_TIME):
+                    arr.append(last_dir + i / Attributes.ROTATE_TIME)
+                arr.append((last_dir + 1) % 4)
+            elif a == 3:
+                last_dir = arr[-1]
+                if last_dir == 0:
+                    last_dir = 4
+                for i in range(1, Attributes.ROTATE_TIME):
+                    arr.append(last_dir - i / Attributes.ROTATE_TIME)
+                arr.append(last_dir - 1)
+            elif a == 4:
+                last_dir = arr[-1]
+                for i in range(1, Attributes.ROTATE_TIME * 2):
+                    arr.append((last_dir + i / Attributes.ROTATE_TIME) % 4)
+                arr.append((last_dir + 2) % 4)
+            else:
+                arr.append(arr[-1])
         return arr
     
     def get_command(self, bot_num=None):
         PIXEL_RATE = 2 / Attributes.BOARD_SIZE
-        KEEPING_TIME_RATE = PIXEL_RATE * 12  # 1.2 / 0.1
+        KEEPING_TIME_RATE = PIXEL_RATE * 12  # 12 = 1.2 / 0.1
         
         acts = self.get_acts()
         command = []
@@ -84,12 +125,17 @@ class PathBacktracker:
                 if prev_dist: command.append('F%.2f,%.2f' % (prev_dist*PIXEL_RATE, prev_dist*KEEPING_TIME_RATE) if state else 'S'+str(prev_dist*PIXEL_RATE))
                 state = 0
                 prev_dist = 0
-                command.append('R90,3')
+                command.append('R90,5')
             elif a == 3:
                 if prev_dist: command.append('F%.2f,%.2f' % (prev_dist*PIXEL_RATE, prev_dist*KEEPING_TIME_RATE) if state else 'S'+str(prev_dist*PIXEL_RATE))
                 state = 0
                 prev_dist = 0
-                command.append('R-90,3')
+                command.append('R-90,5')
+            elif a == 4:
+                if prev_dist: command.append('F%.2f,%.2f' % (prev_dist*PIXEL_RATE, prev_dist*KEEPING_TIME_RATE) if state else 'S'+str(prev_dist*PIXEL_RATE))
+                state = 0
+                prev_dist = 0
+                command.append('R180,10')
         if prev_dist: command.append('F%.2f,%.2f' % (prev_dist*PIXEL_RATE, prev_dist*KEEPING_TIME_RATE) if state else 'S'+str(prev_dist*PIXEL_RATE))
         return ('' if bot_num is None else str(bot_num) + ':') + '/'.join(command)
     
@@ -125,17 +171,17 @@ def expect_rotate(this_x, this_y, this_direction, target_x, target_y):
         else:
             return 1 + (this_x < target_x)
 
-# data = (time, x, y, direction, remain_distance, remain_time_to_stop_and_rotate, path_backtracker)
+# data = (remain_distance, time, x, y, direction, path_backtracker)
 # remain_time_to_stop_and_rotate: only wait if positive
 
-def time_a_star(start_point, start_direction, target_point, obstacle, another_visited):
+def time_a_star(start_point, start_direction, target_point, target_direction, obstacle, another_visited):
     q = []
     this_visited = set()
     _dist = manhattan(start_point, target_point)
-    push(q, (_dist, 0, *start_point, start_direction, _dist, 0, None))
+    push(q, (_dist, _dist, 0, *start_point, start_direction, None))
     this_visited.add((start_point, start_direction, 0))
     while q:
-        _, time, x, y, direction, remain_distance, remain_time_to_stop_and_rotate, path_backtracker = pop(q)
+        _, remain_distance, time, x, y, direction, path_backtracker = pop(q)
         if (x, y) == target_point:
             flag_possible_goal = True
             for bot_path_log in another_visited:
@@ -146,6 +192,18 @@ def time_a_star(start_point, start_direction, target_point, obstacle, another_vi
                         break
             if not flag_possible_goal:
                 continue
+            if target_direction == direction:
+                pass
+            elif target_direction == ACTION[direction][0]:
+                time += Attributes.ROTATE_TIME
+                path_backtracker = PathBacktracker(path_backtracker, 2)
+            elif target_direction == ACTION[direction][1]:
+                time += Attributes.ROTATE_TIME
+                path_backtracker = PathBacktracker(path_backtracker, 3)
+            else:
+                time += Attributes.ROTATE_TIME * 2
+                path_backtracker = PathBacktracker(path_backtracker, 4)
+            direction = target_direction
             return time, x, y, direction, path_backtracker
         new_time = time + 1
         flag_now_possible = True
@@ -155,10 +213,6 @@ def time_a_star(start_point, start_direction, target_point, obstacle, another_vi
                 flag_now_possible = False
                 break
         if not flag_now_possible:
-            continue
-        if remain_time_to_stop_and_rotate > 0:
-            push(q, (new_time + remain_distance + expect_rotate(x, y, direction, *target_point) * Attributes.ROTATE_TIME, 
-                     new_time, x, y, direction, remain_distance, remain_time_to_stop_and_rotate-1, PathBacktracker(path_backtracker)))
             continue
         
         flag_future_possible = True
@@ -177,46 +231,66 @@ def time_a_star(start_point, start_direction, target_point, obstacle, another_vi
                 if flag_future_possible:
                     this_visited.add((new_xy, direction, new_time))
                     new_dist = manhattan(new_xy, target_point)
-                    push(q, (new_time + new_dist + expect_rotate(new_x, new_y, direction, *target_point) * Attributes.ROTATE_TIME, 
-                             new_time, new_x, new_y, direction, new_dist, 0, PathBacktracker(path_backtracker, 1)))
+                    push(q, (new_time + new_dist + ROTATE_DIST[target_direction][direction] * Attributes.ROTATE_TIME, 
+                             new_dist, new_time, new_x, new_y, direction, PathBacktracker(path_backtracker, 1)))
                 else:
-                    push(q, (new_time + remain_distance + expect_rotate(x, y, direction, *target_point) * Attributes.ROTATE_TIME, 
-                             new_time, x, y, direction, remain_distance, Attributes.STOP_TIME-1, PathBacktracker(path_backtracker, 0)))
-        push(q, (new_time + remain_distance + expect_rotate(x, y, ACTION[direction][0], *target_point) * Attributes.ROTATE_TIME, 
-                 new_time, x, y, ACTION[direction][0], remain_distance, Attributes.ROTATE_TIME-1, PathBacktracker(path_backtracker, 2)))
-        push(q, (new_time + remain_distance + expect_rotate(x, y, ACTION[direction][1], *target_point) * Attributes.ROTATE_TIME, 
-                 new_time, x, y, ACTION[direction][1], remain_distance, Attributes.ROTATE_TIME-1, PathBacktracker(path_backtracker, 3)))
+                    push(q, (time + Attributes.STOP_TIME + remain_distance + ROTATE_DIST[target_direction][direction] * Attributes.ROTATE_TIME, 
+                             remain_distance, time + Attributes.STOP_TIME, x, y, direction, PathBacktracker(path_backtracker, 0)))
+        push(q, (time + Attributes.ROTATE_TIME + remain_distance + ROTATE_DIST[target_direction][ACTION[direction][0]] * Attributes.ROTATE_TIME, 
+                 remain_distance, time + Attributes.ROTATE_TIME, x, y, ACTION[direction][0], PathBacktracker(path_backtracker, 2)))
+        push(q, (time + Attributes.ROTATE_TIME + remain_distance + ROTATE_DIST[target_direction][ACTION[direction][1]] * Attributes.ROTATE_TIME, 
+                 remain_distance, time + Attributes.ROTATE_TIME, x, y, ACTION[direction][1], PathBacktracker(path_backtracker, 3)))
 
 
-def turtlebot_astar(size, _, start_point, target_point, start_direction=2):
+def turtlebot_astar(size, _, start_point, target_point, target_type, start_direction=2, output=None):
     import time
     Attributes.BOARD_SIZE = size
     Attributes.init()
     n = len(start_point)
-    mid_x, mid_y = sum(target_point[k][0] for k in range(n)) // n, sum(target_point[k][1] for k in range(n)) // n
+    
+    for i in range(n):
+        for j in range(i+1, n):
+            dx, dy = start_point[i][0]-start_point[j][0], start_point[i][1]-start_point[j][1]
+            if dx*dx + dy*dy <= Attributes.BOT_SIZE_SQUARE:
+                print("[friendship astar] error: bot #%d and #%d is too close! (%.3f < %.3f)" % (i+1, j+1, (dx*dx + dy*dy) ** .5, Attributes.BOT_SIZE))
+                return []
+    
     rec_xy = ((min(target_point[k][0] for k in range(n)), min(target_point[k][1] for k in range(n))), 
               (max(target_point[k][0] for k in range(n)), max(target_point[k][1] for k in range(n))))
+    mid_x, mid_y = (rec_xy[0][0] + rec_xy[1][0]) // 2, (rec_xy[0][1] + rec_xy[1][1]) // 2
     temp_targ_point = target_point[:]
-    for idx, tp in enumerate(target_point):
-        temp_targ_point[idx] = (mid_x + (Attributes.BOT_SIZE // 2 + 5) * (1 if tp[0] > mid_x else -1), 
-                                rec_xy[tp[1] > mid_y][1] + (Attributes.BOT_SIZE // 2 + 5) * (1 if tp[1] > mid_y else -1))
+    if target_type == 1:
+        for idx, tp in enumerate(target_point):
+            temp_targ_point[idx] = (mid_x + (Attributes.BOT_RADIUS + 5) * (1 if tp[0] > mid_x else -1), 
+                                    rec_xy[tp[1] > mid_y][1] + (Attributes.BOT_RADIUS + 5) * (1 if tp[1] > mid_y else -1))
+    elif target_type == 2:
+        for idx, tp in enumerate(target_point):
+            temp_targ_point[idx] = (rec_xy[tp[0] > mid_x][0] + (Attributes.BOT_RADIUS + 5) * (1 if tp[0] > mid_x else -1),
+                                    mid_y + (Attributes.BOT_RADIUS + 5) * (1 if tp[1] < mid_y else -1))
     robots = []
     
     def euclid_square(p1, p2):
         dx, dy = p1[0]-p2[0], p1[1]-p2[1]
         return dx*dx + dy*dy
     
+    res = (float('inf'), None)
+    for case in permutations(temp_targ_point):
+        s = 0
+        for i in range(n):
+            s += euclid_square(start_point[i], case[i])
+        if res[0] > s:
+            res = (s, case)
+    
     for i in range(n):
         sp = tuple(start_point[i])
-        temp_targ_point.sort(key=lambda x: -euclid_square(sp, x))
-        robots.append((sp, start_direction, tuple(temp_targ_point.pop())))
+        tp = tuple(res[1][i])
+        robots.append((sp, start_direction, tp, 2 if tp[1] < mid_y else 0))
+    
     obstacle = set()
-    rec_xy = ((min(target_point[k][0] for k in range(n)), min(target_point[k][1] for k in range(n))), 
-              (max(target_point[k][0] for k in range(n)), max(target_point[k][1] for k in range(n))))
     for i in range(rec_xy[0][0], rec_xy[1][0]+1):
         obstacle.add((i, rec_xy[0][1]))
         obstacle.add((i, rec_xy[1][1]))
-    for j in range(rec_xy[0][1], rec_xy[1][1]+1):
+    for i in range(rec_xy[0][1], rec_xy[1][1]+1):
         obstacle.add((rec_xy[0][0], i))
         obstacle.add((rec_xy[1][0], i))
     start = time.time()
@@ -227,28 +301,131 @@ def turtlebot_astar(size, _, start_point, target_point, start_direction=2):
     for idx, bot in enumerate(robots):
         print("[friendship] calculating:", idx, bot)
         time_, x, y, direction, path_backtracker = time_a_star(*bot, obstacle, another_visited)
+        if output is not None:
+            output.append((bot, path_backtracker))
         another_visited.append(path_backtracker.get_pos_array(*bot[0], bot[1]))
         cmd = path_backtracker.get_command(idx+1)
-        print(time_, x, y, direction, cmd)
+        print(time_, x, y, direction, cmd)  
         cmds.append(cmd)
     print(time.time() - start)
     return cmds
 
 
 if __name__ == '__main__':
-    turtlebot_astar(
-        200, 
-        None, 
-        [
-            [154, 22],
-            [30, 28],
-            [70, 24],
-            [116, 24],
-        ],
-        [
-            [84, 159],
-            [123, 157],
-            [121, 118],
-            [82, 121],
-        ]
-    )
+    # time_, x, y, direction, path_backtracker = time_a_star((35, 27), 2, (55, 96), 2, set(), [])
+    # print(time_, path_backtracker.get_command())
+    test_case = [
+        (
+            [
+                [35, 27],
+                [112, 24],
+                [127, 41],
+                [147, 29],
+            ],
+            [
+                [51, 157],
+                [91, 154],
+                [91, 112],
+                [51, 116],
+            ]
+        ),
+        (
+            [
+                [97, 17],
+                [59, 18],
+                [25, 18],
+                [131, 15],
+            ],
+            [
+                [34, 165],
+                [74, 162],
+                [74, 119],
+                [34, 123],
+            ]
+        ),
+        (
+            [
+                [33, 26],
+                [109, 26],
+                [151, 27],
+                [70, 25],
+            ],
+            [
+                [80, 163],
+                [120, 164],
+                [119, 122],
+                [79, 123],
+            ]
+        )
+    ]
+    
+    import matplotlib.pyplot as plt
+    from matplotlib.animation import FuncAnimation
+    
+    for casenum, case in enumerate(test_case):
+        output = []
+        print()
+        print(case)
+        print(*turtlebot_astar(200, None, *case, 1, output=output), sep='\n')
+        
+        COLOR = 'rgbm'
+        fig, axes = plt.figure(), plt.axes()
+        dots = [axes.scatter([], [], c=COLOR[i], s=Attributes.BOT_SIZE_SQUARE) for i in range(4)]
+        axes.set_xlim((-5, 205))
+        axes.set_ylim((-5, 205))
+        for i in range(4):
+            axes.plot((case[1][i-1][0], case[1][i][0]), (case[1][i-1][1], case[1][i][1]), 'ko--')
+        
+        def simulate(commands, start_x, start_y, start_direction):
+            x, y = start_x, start_y
+            direction = start_direction
+            arr = [(x, y)]
+            TIME_TO_FRAME = 10
+            METER_TO_PIXEL = 100
+            time = 0
+            for command in commands.rpartition(':')[2].split('/'):
+                cmd, arg = command[0], command[1:]
+                if cmd == 'F':
+                    dist, keeping_time = map(float, arg.split(','))
+                    dist = int(dist * METER_TO_PIXEL)
+                    keeping_time *= TIME_TO_FRAME
+                    for _ in range(dist):
+                        x += DIRECTION[0][direction]
+                        y += DIRECTION[1][direction]
+                        arr.append((x, y))
+                    for _ in range(int(keeping_time - dist)):
+                        arr.append((x, y))
+                    time += keeping_time
+                elif cmd == 'R':
+                    angle, keeping_time = map(float, arg.split(','))
+                    angle = int(angle // 90)
+                    direction = (direction - angle) % 4
+                    keeping_time *= TIME_TO_FRAME
+                    for _ in range(int(keeping_time + time - int(time))):
+                        arr.append((x, y))
+                    time += keeping_time
+                elif cmd == 'S':
+                    keeping_time = float(arg) * TIME_TO_FRAME
+                    for _ in range(int(keeping_time + time - int(time))):
+                        arr.append((x, y))
+                    time += keeping_time
+            return arr
+        
+        positions = [simulate(output[i][1].get_command(), *output[i][0][0], output[i][0][1]) for i in range(4)]
+        # positions = [output[i][1].get_pos_array(*output[i][0][0], output[i][0][1]) for i in range(4)]
+        # directions = [bt.get_dir_array() for bt in output_path_backtracker]
+        
+        MAX_FRAME = max(map(len, positions))
+        
+        def update(frame):
+            for i in range(4):
+                scat = dots[i]
+                try:
+                    pos = positions[i][frame]
+                except IndexError:
+                    pos = positions[i][-1]
+                scat.set_offsets(pos)
+            return dots
+        
+        anim = FuncAnimation(fig, update, frames=MAX_FRAME, interval=10)
+        anim.save('test_timeastar_' + str(casenum) + '.gif', fps=24)

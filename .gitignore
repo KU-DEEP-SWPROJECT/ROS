@@ -2,3 +2,4 @@
 /CMakeLists.txt
 /test.py
 main_pkg/src/algorithm/
+*.gif
