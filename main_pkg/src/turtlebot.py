@@ -581,6 +581,7 @@ class BotController:
     def get_cmd_cam_return(self):
 
         # parsing layer 1
+        '''
         cam_data = self.get_cam_data()
         pixel = cam_data[0]
         bot_radius = cam_data[1]
@@ -588,9 +589,17 @@ class BotController:
         jim_array = cam_data[3]
         obs = cam_data[4]
         robot_color = cam_data[5]
-        
-        
+        '''
+        cam_output  = get_points(2)
 
+        # parsing layer 1
+        pixel = cam_output[0]
+        bot_radius = 20#cam_output[1]
+        bot_pos_array = cam_output[2]
+        jim_array = cam_output[3]
+        obs=[]
+        robot_color=["R","G","B","P"]
+        print(cam_output)
         # set robot data
         robots = self.robot_class
         
