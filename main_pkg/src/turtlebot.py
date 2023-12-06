@@ -430,6 +430,9 @@ class TurtleBot:
         if theta < 0:
             theta += TWO_PI
         return data.pose.pose.position.x, data.pose.pose.position.y, theta
+    
+    def get_angle(self):
+        return self.direction_raw
         
     def get_dist(self, x, y):
         dx = x - self.pos[0]
@@ -442,9 +445,12 @@ class TurtleBot:
 class BotController:
     def __init__(self, array_of_bot: List[TurtleBot]):
         self.bots = array_of_bot
+        self.robot_class = []
         self.command_array = []
         self.now_running_threads = []
         self.__TERMINATED = False
+
+        self.bots_start_pos = []
     
     def push_command(self, command: str):
         self.command_array.append(command)
@@ -514,52 +520,111 @@ class BotController:
             if bot is not None:
                 bot.terminate()
 
+    def get_cam_data(self):
+        cam_output  = get_points(2)
 
-def get_cmd_form_camera():
+        pixel = cam_output[0]
+        bot_radius = 20#cam_output[1]
+        bot_pos_array = cam_output[2]
+        jim_array = cam_output[3]
+        obs=[]
+        robot_color=["R","G","B","P"]
+        print(cam_output)
+
+        return [pixel,bot_radius,bot_pos_array,jim_array,obs,robot_color]
+    
     BOT_DIR = 0b00
     BOT_LINENAR_TIME=1
     BOT_ROTATE_TIME=25
     BOT_STOP_TIME=1
 
-    # get camera data
-    cam_output  = get_points(2)
-
-    # parsing layer 1
-    pixel = cam_output[0]
-    bot_radius = 20#cam_output[1]
-    bot_pos_array = cam_output[2]
-    jim_array = cam_output[3]
-    obs=[]
-    robot_color=["R","G","B","P"]
-    print(cam_output)
-
-
-    def get_goal_pos(robot_array,jim_array,num):
+    def get_cmd_from_camera(self):
         
+        # get camera data
+        cam_output  = get_points(2)
+
+        # parsing layer 1
+        pixel = cam_output[0]
+        bot_radius = 20#cam_output[1]
+        bot_pos_array = cam_output[2]
+        jim_array = cam_output[3]
+        obs=[]
+        robot_color=["R","G","B","P"]
+        print(cam_output)
+
+        #save start position
+        for i in bot_pos_array:
+            self.bots_start_pos.append(i)
+
+        # set robot data
+        robots = self.robot_class
+
+        for i in range(len(bot_pos_array)):
+            robots.append(Robot(bot_pos_array[i],self.BOT_DIR,self.BOT_LINENAR_TIME,self.BOT_ROTATE_TIME,self.BOT_STOP_TIME,robot_color[i]))
+
+        # set Astar
+        astar = TimeAstar(SIZE=pixel, Radius=bot_radius, robots=robots,goal=jim_array, obstacles=obs)
+        #start setting
+        #astar.Robot_sort()
+        for i in range(len(robots)):
+            astar.Search(i)
+
+        print_Arry=[]
+
+        # print each bot's path
+        for i in range(len(astar.robots)):
+            print(astar.ToCommand(i))
+            print_Arry.append(astar.ToCommand(i))
         
-        return (0,0)
-
-    # set robot data
-    robots = []
-
-    for i in range(len(bot_pos_array)):
-        robots.append(Robot(bot_pos_array[i],BOT_DIR,BOT_LINENAR_TIME,BOT_ROTATE_TIME,BOT_STOP_TIME,robot_color[i]))
-
-    # set Astar
-    astar = TimeAstar(SIZE=pixel, Radius=bot_radius, robots=robots,goal=jim_array, obstacles=obs)
-    #start setting
-    #astar.Robot_sort()
-    for i in range(len(robots)):
-        astar.Search(i)
-
-    print_Arry=[]
-
-    # print each bot's path
-    for i in range(len(astar.robots)):
-        print(astar.ToCommand(i))
-        print_Arry.append(astar.ToCommand(i))
+        return print_Arry, len(robots)
     
-    return print_Arry, len(robots)
+    def get_cmd_cam_return(self):
+
+        # parsing layer 1
+        cam_data = self.get_cam_data()
+        pixel = cam_data[0]
+        bot_radius = cam_data[1]
+        bot_pos_array = cam_data[2]
+        jim_array = cam_data[3]
+        obs = cam_data[4]
+        robot_color = cam_data[5]
+        
+        
+
+        # set robot data
+        robots = self.robot_class
+        
+        '''
+        for i in range(len(bot_pos_array)):
+            robots.append(Robot(bot_pos_array[i],self.BOT_DIR,self.BOT_LINENAR_TIME,self.BOT_ROTATE_TIME,self.BOT_STOP_TIME,robot_color[i]))
+        '''
+        
+        # set Astar
+        astar = TimeAstar(SIZE=pixel, Radius=bot_radius, robots=robots,goal=jim_array, obstacles=obs)
+        
+        #start setting
+        #set goal position
+        for i in range(len(self.robot_class)):
+            astar.robots[i].GOAL = self.bots_start_pos[i]
+
+        #set robot direction
+        for i in range(len(self.robot_class)):
+            astar.robots[i].direction = astar.robots[i].last[1]
+
+        astar.Robot_sort()
+
+        for i in range(len(robots)):
+            astar.Search(i)
+
+        print_Arry=[]
+
+        # print each bot's path
+        for i in range(len(astar.robots)):
+            print(astar.ToCommand(i))
+            print_Arry.append(astar.ToCommand(i))
+        
+        return print_Arry, len(robots)
+        
 
 
 
@@ -577,7 +642,8 @@ if __name__=="__main__":
         print("터틀봇에게 전송할 명령을 입력하세요.")
         print("- 입력된 명령들을 실행하려면 `run`을 입력하세요.")
         print("- 물건 운반 작업을 진행하려면 `carry`를 입력하세요.")
-        print("- 관제 카메라를 통해 제어하려면 `CAM`를 입력하세요.")
+        print("- 관제 카메라를 통해 제어하려면 `CAM`을 입력하세요.")
+        print("- 관제 카메라를 통해 제어전 위치로 다시 돌아가려면 `RECAM`을 입력하세요.")
         print("- 프로그램을 종료하려면 아무것도 입력하지 않고 Enter를 누르세요.")
         while True:
             temp_cmd = input("turtlebot> ")
@@ -587,7 +653,16 @@ if __name__=="__main__":
                 print("[@] Running commands finished.")
             elif temp_cmd.lower() == "cam":
                 print("[@] Get Camera date Start")
-                cmd_arr, bot_num = get_cmd_form_camera()
+                cmd_arr, bot_num = controller.get_cmd_from_camera()
+                for i in range(bot_num):
+                    controller.push_command(cmd_arr[i])
+                print("[@] Camera algorith finished.")
+                controller.execute_all_commands()
+                controller.run_all_turtlebots()
+                print("[@] Running commands finished.")
+            elif temp_cmd.lower() == "recam":
+                print("[@] Get Camera date Start")
+                cmd_arr, bot_num = controller.get_cmd_cam_return()
                 for i in range(bot_num):
                     controller.push_command(cmd_arr[i])
                 print("[@] Camera algorith finished.")
