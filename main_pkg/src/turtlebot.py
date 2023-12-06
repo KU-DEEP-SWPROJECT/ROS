@@ -183,7 +183,7 @@ class TurtleBot:
             raise ValueError("Lack of arguments.")
         if check_param_bit in {0b011, 0b110}:
             # only dist or move_time is given (011, 110) => use default speed
-            speed = self.DEFAULT_LINEAR_SPEED * (1 if dist > self.MOVE_SLOWDOWN_BOUNDARY else dist / self.MOVE_SLOWDOWN_BOUNDARY)
+            speed = self.DEFAULT_LINEAR_SPEED * (1 if abs(dist) > self.MOVE_SLOWDOWN_BOUNDARY else abs(dist) / self.MOVE_SLOWDOWN_BOUNDARY)
         if check_param_bit & 0b100 == 100:
             # dist is not given, but move_time is given (100, 110) => calculate dist
             dist = speed * move_time
