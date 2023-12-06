@@ -127,7 +127,7 @@ class TurtleBot:
         angles = list(filter(lambda x: 0.01 < data.ranges[x] < limitation[x], range(360)))
         fronts = list(filter(lambda angle: angle < 30 or angle > 330, angles))
         backs = list(filter(lambda angle: 150 < angle < 210, angles))
-        self.last_front_data = [(data.ranges[x], x) for x in range(-30, 30) if data.ranges[x] > 0.01]
+        self.last_front_data = sorted((data.ranges[x], x) for x in range(-30, 30) if data.ranges[x] > 0.01)
         with self.condition:
             if self.state == State.PARKING:
                 pass
@@ -345,8 +345,15 @@ class TurtleBot:
                 self.RATE.sleep()
                 continue
             try:
-                nearest_dist, nearest_angle = min(self.last_front_data)
-                if abs(nearest_angle) < ANGLE_TORLERANCE_DEGREES:
+                align_flag = False
+                nearest_dist, nearest_angle = 999, 0
+                for dist_, angle_ in self.last_front_data[:3]:
+                    if abs(angle_) < ANGLE_TORLERANCE_DEGREES:
+                        align_flag = True
+                        break
+                    if nearest_dist > dist_:
+                        nearest_dist, nearest_angle = dist_, angle_
+                if align_flag:
                     break
                 with self.condition:
                     self.state = State.CARRY_ALIGN
