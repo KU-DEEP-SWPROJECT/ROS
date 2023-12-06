@@ -603,9 +603,13 @@ class BotController:
         astar = TimeAstar(SIZE=pixel, Radius=bot_radius, robots=robots,goal=jim_array, obstacles=obs)
         
         #start setting
-        #save goal position
+        #set goal position
         for i in range(len(self.robot_class)):
             astar.robots[i].GOAL = self.bots_start_pos[i]
+
+        #set robot direction
+        for i in range(len(self.robot_class)):
+            astar.robots[i].direction = astar.robots[i].last[1]
 
         astar.Robot_sort()
 
