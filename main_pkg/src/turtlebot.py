@@ -249,7 +249,7 @@ class TurtleBot:
             raise ValueError("Lack of arguments.")
         if check_param_bit in {0b011, 0b110}:
             # only angle or rotate_time is given (011, 110) => use default speed
-            speed = self.DEFAULT_ANGLUAR_SPEED * (1 if angle > self.ROTATE_SLOWDOWN_BOUNDARY else angle / self.ROTATE_SLOWDOWN_BOUNDARY)
+            speed = self.DEFAULT_ANGLUAR_SPEED * (1 if abs(angle) > self.ROTATE_SLOWDOWN_BOUNDARY else abs(angle) / self.ROTATE_SLOWDOWN_BOUNDARY)
         if check_param_bit & 0b100 == 0b100:
             # angle is not given, but rotate_time is given (100, 110) => calculate angle
             angle = speed * rotate_time
